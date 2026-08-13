@@ -41,7 +41,7 @@ jobs:
           if ! git diff --quiet -- index.html; then
             git add index.html
             git commit -m "Auto-sync dashboard data $(date -u +'%Y-%m-%d %H:%M UTC')"
-            git push
-          else
+            git pull --rebase --autostash origin main
+          git push
             echo "No changes to commit."
           fi
