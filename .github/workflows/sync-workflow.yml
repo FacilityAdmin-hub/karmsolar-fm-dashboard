@@ -2,8 +2,8 @@ name: Sync dashboard from Microsoft Graph
 
 on:
   schedule:
-    # Every 15 minutes
-    - cron: '*/15 * * * *'
+        - cron: '*/5 * * * *'          
+
   workflow_dispatch: {}
 
 permissions:
