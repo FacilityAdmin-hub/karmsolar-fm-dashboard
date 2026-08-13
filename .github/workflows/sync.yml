@@ -1,4 +1,4 @@
-name: Sync dashboard from Microsoft Graph
+name: Sync dashboard from Microsoft Graph 
 
 on:
   schedule:
