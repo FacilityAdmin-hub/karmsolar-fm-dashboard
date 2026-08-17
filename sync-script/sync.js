@@ -77,10 +77,35 @@ function patchSourceLabel(htmlContent) {
 // is exactly as safe as EMBEDDED is for DS: a returning visitor's local edits and status
 // history always take priority once restoreState() runs; only first-time visitors (with no
 // saved state at all) see this baked snapshot.
+//
+// This can't be a simple regex up to the next "];" — issue titles/notes are free user text
+// and could themselves contain "];". Instead we scan forward from "let ISSUES=" tracking
+// JSON string/escape state and bracket depth, exactly like patchIndexHtml does for EMBEDDED,
+// so we find the actual matching close-bracket regardless of what's inside.
 function patchIssues(htmlContent, issues) {
-  const re = /let ISSUES=\[\];/;
-  if (!re.test(htmlContent)) throw new Error('Could not find "let ISSUES=[];" in index.html — has the file structure changed?');
-  return htmlContent.replace(re, `let ISSUES=${JSON.stringify(issues)};`);
+  const marker = 'let ISSUES=';
+  const start = htmlContent.indexOf(marker);
+  if (start < 0) throw new Error('Could not find "let ISSUES=" in index.html — has the file structure changed?');
+  const arrStart = start + marker.length; // position of the opening '['
+  if (htmlContent[arrStart] !== '[') throw new Error('Expected "[" right after "let ISSUES=" — has the file structure changed?');
+  let depth = 0, inStr = false, esc = false, i = arrStart;
+  for (; i < htmlContent.length; i++) {
+    const ch = htmlContent[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === '[') depth++;
+    else if (ch === ']') { depth--; if (depth === 0) { i++; break; } }
+  }
+  // i is now just past the matching ']'; expect a ';' right after
+  if (htmlContent[i] !== ';') throw new Error('Could not find closing "];" for ISSUES array — has the file structure changed?');
+  const before = htmlContent.slice(0, arrStart);
+  const after = htmlContent.slice(i); // starts with ';'
+  return before + JSON.stringify(issues) + after;
 }
 
 async function main() {
