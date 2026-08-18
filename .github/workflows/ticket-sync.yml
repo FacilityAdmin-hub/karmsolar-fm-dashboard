@@ -1,0 +1,49 @@
+name: Sync ticket board from Microsoft Graph
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: sync-script
+        run: npm install --no-save xlsx
+
+      - name: Run ticket sync
+        working-directory: sync-script
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          BOARD_HTML_PATH: ${{ github.workspace }}/ticket-board.html
+        run: node sync-tickets.js
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "ticket-sync-bot"
+          git config user.email "actions@github.com"
+          if ! git diff --quiet -- ticket-board.html; then
+            git add ticket-board.html
+            git commit -m "Auto-sync ticket board data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            for i in 1 2 3 4 5; do
+              git pull --rebase && git push && break
+              sleep 3
+            done
+          else
+            echo "No changes to ticket-board.html"
+          fi
