@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KarmSolar FM & Admin — Ticket Board</title>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <style>
   :root{
     --navy:#0f2a3d; --green:#1b7a4a; --green-dark:#145c38;
@@ -15,30 +14,25 @@
   body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);}
   header{background:linear-gradient(135deg,var(--navy),var(--green-dark));color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
   header h1{margin:0;font-size:1.3rem;}
-  .topbar-right{display:flex;align-items:center;gap:14px;font-size:.85rem;}
-  .dot{width:9px;height:9px;border-radius:50%;background:#ccc;display:inline-block;margin-right:6px;}
-  .dot.ok{background:#7be0a4;} .dot.err{background:#ff9d92;}
-  button{font-family:inherit;cursor:pointer;}
-  .btn{padding:8px 14px;border:none;border-radius:8px;background:#fff;color:var(--navy);font-weight:bold;font-size:.82rem;}
-  .btn.ghost{background:rgba(255,255,255,.15);color:#fff;}
+  .topbar-right{font-size:.8rem;opacity:.85;}
   .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:16px 24px;background:#fff;border-bottom:1px solid var(--border);}
   .toolbar input,.toolbar select{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;}
   .toolbar .grow{flex:1;min-width:160px;}
   .viewToggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-left:auto;}
-  .viewToggle button{border:none;background:#fff;padding:8px 16px;font-size:.82rem;font-weight:bold;color:var(--muted);}
+  .viewToggle button{border:none;background:#fff;padding:8px 16px;font-size:.82rem;font-weight:bold;color:var(--muted);cursor:pointer;}
   .viewToggle button.active{background:var(--green);color:#fff;}
   main{padding:20px 24px 60px;}
 
-  /* table view */
   table{width:100%;border-collapse:collapse;background:#fff;border-radius:var(--radius);overflow:hidden;box-shadow:0 2px 10px rgba(15,42,61,.05);}
   th,td{padding:10px 12px;text-align:left;font-size:.82rem;border-bottom:1px solid var(--border);vertical-align:top;}
   th{background:var(--navy);color:#fff;position:sticky;top:0;}
   tr:hover td{background:#f7faf9;}
-  select.inlineStatus, select.inlineAssign{padding:5px 6px;border-radius:6px;border:1px solid var(--border);font-size:.78rem;}
   .pill{display:inline-block;padding:3px 9px;border-radius:12px;font-size:.72rem;font-weight:bold;color:#fff;}
   .pri-Low{background:#8aa6a0;} .pri-Medium{background:var(--warn);} .pri-High{background:#d97b2b;} .pri-Urgent{background:var(--danger);}
+  .status-pill{display:inline-block;padding:4px 10px;border-radius:12px;font-size:.72rem;font-weight:bold;color:#fff;background:var(--muted);}
+  .status-Open{background:#8aa6a0;} .status-InProgress{background:#2b6ea3;} .status-OnHold{background:var(--warn);}
+  .status-Resolved{background:var(--green);} .status-Closed{background:#555;}
 
-  /* kanban */
   .board{display:flex;gap:14px;overflow-x:auto;padding-bottom:10px;}
   .col{flex:0 0 280px;background:#eef2f1;border-radius:var(--radius);padding:10px;}
   .col h3{margin:4px 6px 10px;font-size:.85rem;color:var(--navy);display:flex;justify-content:space-between;}
@@ -47,122 +41,43 @@
   .cardT.pri-Medium{border-left-color:var(--warn);}
   .cardT h4{margin:0 0 4px;font-size:.86rem;}
   .cardT .meta{font-size:.72rem;color:var(--muted);margin-bottom:6px;}
-  .cardT select{width:100%;margin-top:6px;padding:5px;border-radius:6px;border:1px solid var(--border);font-size:.75rem;}
 
   .empty{text-align:center;color:var(--muted);padding:60px 20px;}
-  .signinBox{max-width:420px;margin:80px auto;text-align:center;background:#fff;padding:30px;border-radius:var(--radius);box-shadow:0 4px 20px rgba(15,42,61,.08);}
-  .signinBox button{padding:12px 24px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-size:.9rem;}
 </style>
 </head>
 <body>
 
 <header>
   <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
-  <div class="topbar-right">
-    <span id="statusText"><span class="dot" id="statusDot"></span>Connecting…</span>
-    <button class="btn ghost" id="refreshBtn">↻ Refresh</button>
-  </div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
-<div id="signinBox" class="signinBox" style="display:none;">
-  <p>Sign in with your KarmSolar Microsoft account to view and manage the ticket board.</p>
-  <button id="signinBtn">Continue with Microsoft</button>
-</div>
-
-<div id="app" style="display:none;">
-  <div class="toolbar">
-    <input type="text" id="searchBox" class="grow" placeholder="Search title, requester, site…">
-    <select id="filterStatus"><option value="">All statuses</option></select>
-    <select id="filterCategory"><option value="">All categories</option></select>
-    <select id="filterPriority"><option value="">All priorities</option></select>
-    <div class="viewToggle">
-      <button id="tableViewBtn" class="active">Table</button>
-      <button id="kanbanViewBtn">Kanban</button>
-    </div>
+<div class="toolbar">
+  <input type="text" id="searchBox" class="grow" placeholder="Search title, requester, site…">
+  <select id="filterStatus"><option value="">All statuses</option></select>
+  <select id="filterCategory"><option value="">All categories</option></select>
+  <select id="filterPriority"><option value="">All priorities</option></select>
+  <div class="viewToggle">
+    <button id="tableViewBtn" class="active">Table</button>
+    <button id="kanbanViewBtn">Kanban</button>
   </div>
-
-  <main>
-    <div id="tableView"></div>
-    <div id="kanbanView" style="display:none;"></div>
-  </main>
 </div>
+
+<main>
+  <div id="tableView"></div>
+  <div id="kanbanView" style="display:none;"></div>
+</main>
 
 <script>
-const CLIENT_ID = "f298e7ee-dc78-4c73-816d-1947bebe1380";
-const TENANT_ID = "739fefec-5106-43ec-910f-467d81bbc92c";
-const DRIVE_ID  = "b!QvGoLde_QkyA-E4faLg2X7tMP0sMJWFOkafzETUCUFMmoh-cxvNYQIaj1Ihps5SH";
-const ITEM_ID   = "01TCQY7HJUUMDWBQO3MFA3KU772A2277HV";
-const TABLE_NAME = "Tickets";
-const SCOPES = ["Files.ReadWrite", "User.Read"];
+// Baked in fresh every ~5 minutes by .github/workflows/ticket-sync.yml — this page
+// never talks to Microsoft Graph itself, so it needs no sign-in for anyone viewing it.
+const EMBEDDED_TICKETS = [];
+
 const STATUSES = ["Open","In Progress","On Hold","Resolved","Closed"];
-const COLS = ["Ticket ID","Date Submitted","Title","Description","Category","Priority","Site / Location","Requester Name","Requester Email","Status","Assigned To","Date Updated","Resolution Notes"];
-
-const msalConfig = {
-  auth: { clientId: CLIENT_ID, authority: `https://login.microsoftonline.com/${TENANT_ID}`, redirectUri: window.location.href.split('#')[0].split('?')[0] },
-  cache: { cacheLocation: "memoryStorage", storeAuthStateInCookie: true }
-};
-const msalInstance = new msal.PublicClientApplication(msalConfig);
-let account = null, accessToken = null, rows = []; // rows: {index, values}
-
-function setStatus(t,s){ document.getElementById('statusText').innerHTML = `<span class="dot ${s||''}"></span>${t}`; }
-
-async function init(){
-  await msalInstance.handleRedirectPromise().catch(()=>{});
-  const accs = msalInstance.getAllAccounts();
-  if (accs.length){ account = accs[0]; await getToken(); return; }
-  try{
-    const r = await msalInstance.ssoSilent({ scopes: SCOPES });
-    account = r.account; accessToken = r.accessToken; onSignedIn();
-  }catch(e){
-    setStatus('Sign-in required','err');
-    document.getElementById('signinBox').style.display = 'block';
-  }
-}
-async function getToken(){
-  try{
-    const r = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
-    accessToken = r.accessToken; onSignedIn();
-  }catch(e){
-    setStatus('Sign-in required','err');
-    document.getElementById('signinBox').style.display = 'block';
-  }
-}
-function onSignedIn(){
-  setStatus('Signed in as ' + (account.username||account.name), 'ok');
-  document.getElementById('signinBox').style.display = 'none';
-  document.getElementById('app').style.display = 'block';
-  loadRows();
-}
-document.getElementById('signinBtn').addEventListener('click', ()=> msalInstance.loginRedirect({ scopes: SCOPES }));
-document.getElementById('refreshBtn').addEventListener('click', loadRows);
-
-async function graphFetch(path, opts={}){
-  const r = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
-  accessToken = r.accessToken;
-  const res = await fetch(`https://graph.microsoft.com/v1.0/drives/${DRIVE_ID}/items/${ITEM_ID}/workbook${path}`, {
-    ...opts,
-    headers: { 'Authorization':'Bearer '+accessToken, 'Content-Type':'application/json', ...(opts.headers||{}) }
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.status === 204 ? null : res.json();
-}
-
-async function loadRows(){
-  setStatus('Loading tickets…');
-  try{
-    const data = await graphFetch(`/tables('${TABLE_NAME}')/rows`);
-    rows = data.value.map(r => ({ index: r.index, values: r.values[0] }));
-    populateFilters();
-    render();
-    setStatus('Signed in as ' + (account.username||account.name) + ' · ' + rows.length + ' tickets', 'ok');
-  }catch(e){
-    console.error(e);
-    setStatus('Failed to load tickets','err');
-  }
-}
+let tickets = EMBEDDED_TICKETS;
 
 function populateFilters(){
-  const cats = [...new Set(rows.map(r=>r.values[4]).filter(Boolean))];
+  const cats = [...new Set(tickets.map(t=>t['Category']).filter(Boolean))];
   const fc = document.getElementById('filterCategory');
   fc.innerHTML = '<option value="">All categories</option>' + cats.map(c=>`<option>${c}</option>`).join('');
   const fs = document.getElementById('filterStatus');
@@ -174,36 +89,19 @@ function getFiltered(){
   const st = document.getElementById('filterStatus').value;
   const cat = document.getElementById('filterCategory').value;
   const pri = document.getElementById('filterPriority').value;
-  return rows.filter(r=>{
-    const v = r.values;
-    if (st && v[9] !== st) return false;
-    if (cat && v[4] !== cat) return false;
-    if (pri && v[5] !== pri) return false;
+  return tickets.filter(t=>{
+    if (st && t['Status'] !== st) return false;
+    if (cat && t['Category'] !== cat) return false;
+    if (pri && t['Priority'] !== pri) return false;
     if (q){
-      const hay = (v[2]+' '+v[7]+' '+v[6]+' '+v[0]).toLowerCase();
+      const hay = (t['Title']+' '+t['Requester Name']+' '+t['Site / Location']+' '+t['Ticket ID']).toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
 }
 
-async function updateField(rowIndex, colIndex, newValue){
-  const row = rows.find(r=>r.index===rowIndex);
-  if (!row) return;
-  const newValues = [...row.values];
-  newValues[colIndex] = newValue;
-  newValues[11] = new Date().toISOString().slice(0,16).replace('T',' '); // Date Updated
-  try{
-    await graphFetch(`/tables('${TABLE_NAME}')/rows/itemAt(index=${rowIndex})`, {
-      method:'PATCH', body: JSON.stringify({ values: [newValues] })
-    });
-    row.values = newValues;
-    render();
-  }catch(e){
-    console.error(e);
-    alert('Could not save change — please refresh and try again.');
-  }
-}
+function statusClass(s){ return 'status-' + String(s||'').replace(/\s+/g,''); }
 
 function render(){
   const list = getFiltered();
@@ -216,43 +114,35 @@ function renderTable(list){
   if (!list.length){ el.innerHTML = '<div class="empty">No tickets match your filters.</div>'; return; }
   el.innerHTML = `<table><thead><tr>
     <th>ID</th><th>Submitted</th><th>Title</th><th>Category</th><th>Priority</th><th>Site</th><th>Requester</th><th>Status</th><th>Assigned To</th>
-  </tr></thead><tbody>${list.map(r=>{
-    const v = r.values;
+  </tr></thead><tbody>${list.map(t=>{
     return `<tr>
-      <td>${v[0]}</td>
-      <td>${v[1]}</td>
-      <td><b>${escapeHtml(v[2])}</b><div style="color:var(--muted);font-size:.75rem;margin-top:2px;">${escapeHtml((v[3]||'').slice(0,80))}</div></td>
-      <td>${v[4]}</td>
-      <td><span class="pill pri-${v[5]}">${v[5]}</span></td>
-      <td>${v[6]}</td>
-      <td>${escapeHtml(v[7])}<div style="color:var(--muted);font-size:.72rem;">${v[8]}</div></td>
-      <td>${statusSelect(r.index, v[9])}</td>
-      <td><input type="text" value="${escapeAttr(v[10])}" style="width:100%;padding:5px;border:1px solid var(--border);border-radius:6px;font-size:.78rem;" onchange="updateField(${r.index},10,this.value)"></td>
+      <td>${escapeHtml(t['Ticket ID'])}</td>
+      <td>${escapeHtml(t['Date Submitted'])}</td>
+      <td><b>${escapeHtml(t['Title'])}</b><div style="color:var(--muted);font-size:.75rem;margin-top:2px;">${escapeHtml((t['Description']||'').slice(0,80))}</div></td>
+      <td>${escapeHtml(t['Category'])}</td>
+      <td><span class="pill pri-${t['Priority']}">${escapeHtml(t['Priority'])}</span></td>
+      <td>${escapeHtml(t['Site / Location'])}</td>
+      <td>${escapeHtml(t['Requester Name'])}<div style="color:var(--muted);font-size:.72rem;">${escapeHtml(t['Requester Email'])}</div></td>
+      <td><span class="status-pill ${statusClass(t['Status'])}">${escapeHtml(t['Status'])}</span></td>
+      <td>${escapeHtml(t['Assigned To'])}</td>
     </tr>`;
   }).join('')}</tbody></table>`;
-}
-
-function statusSelect(rowIndex, current){
-  return `<select class="inlineStatus" onchange="updateField(${rowIndex},9,this.value)">${STATUSES.map(s=>`<option ${s===current?'selected':''}>${s}</option>`).join('')}</select>`;
 }
 
 function renderKanban(list){
   const el = document.getElementById('kanbanView');
   el.innerHTML = `<div class="board">${STATUSES.map(s=>{
-    const items = list.filter(r=>r.values[9]===s);
-    return `<div class="col"><h3>${s} <span>${items.length}</span></h3>${items.map(r=>{
-      const v = r.values;
-      return `<div class="cardT pri-${v[5]}">
-        <h4>${escapeHtml(v[2])}</h4>
-        <div class="meta">${v[0]} · ${v[4]} · ${escapeHtml(v[6])}<br>${escapeHtml(v[7])}</div>
-        ${statusSelect(r.index, v[9])}
+    const items = list.filter(t=>t['Status']===s);
+    return `<div class="col"><h3>${s} <span>${items.length}</span></h3>${items.map(t=>{
+      return `<div class="cardT pri-${t['Priority']}">
+        <h4>${escapeHtml(t['Title'])}</h4>
+        <div class="meta">${escapeHtml(t['Ticket ID'])} · ${escapeHtml(t['Category'])} · ${escapeHtml(t['Site / Location'])}<br>${escapeHtml(t['Requester Name'])}</div>
       </div>`;
     }).join('') || '<div style="color:var(--muted);font-size:.78rem;padding:8px;">Empty</div>'}</div>`;
   }).join('')}</div>`;
 }
 
-function escapeHtml(s){ return (s||'').toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-function escapeAttr(s){ return escapeHtml(s); }
+function escapeHtml(s){ return (s==null?'':s).toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 ['searchBox'].forEach(id=>document.getElementById(id).addEventListener('input', render));
 ['filterStatus','filterCategory','filterPriority'].forEach(id=>document.getElementById(id).addEventListener('change', render));
@@ -270,7 +160,8 @@ document.getElementById('kanbanViewBtn').addEventListener('click', ()=>{
   document.getElementById('tableViewBtn').classList.remove('active');
 });
 
-init();
+populateFilters();
+render();
 </script>
 </body>
 </html>
