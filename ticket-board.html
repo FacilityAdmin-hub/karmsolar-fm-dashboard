@@ -49,7 +49,7 @@
 
 <header>
   <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 8/20/2026, 7:56:05 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -71,7 +71,7 @@
 <script>
 // Baked in fresh every ~5 minutes by .github/workflows/ticket-sync.yml — this page
 // never talks to Microsoft Graph itself, so it needs no sign-in for anyone viewing it.
-const EMBEDDED_TICKETS = [];
+const EMBEDDED_TICKETS = [{"Ticket ID":"TCK-0001","Date Submitted":46251.375,"Title":"AC not cooling - Site B office","Description":"The office AC unit on the 2nd floor has stopped cooling since this morning.","Category":"Maintenance","Priority":"High","Site / Location":"Site B","Requester Name":"Ahmed Youssef","Requester Email":"ahmed.youssef@karmsolar.com","Status":"Resolved","Assigned To":"","Date Updated":46252.561111111114,"Resolution Notes":""},{"Ticket ID":"TCK-260818-132031-CGJ","Date Submitted":46252.4305555556,"Title":"ahmed sahkra test","Description":"tesssssssssst","Category":"Contracts / Vendors","Priority":"Low","Site / Location":"c3a","Requester Name":"teat ","Requester Email":"mohi.mohsen@karmsolar.com","Status":"In Progress","Assigned To":"","Date Updated":46252.561111111114,"Resolution Notes":""},{"Ticket ID":"TCK-260818-145254-ATF","Date Submitted":46252.49444444444,"Title":"لل","Description":"اا","Category":"Access / Security","Priority":"High","Site / Location":"لل","Requester Name":"لل","Requester Email":"mohi.mohsen@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""}];
 
 const STATUSES = ["Open","In Progress","On Hold","Resolved","Closed"];
 let tickets = EMBEDDED_TICKETS;
