@@ -63,7 +63,7 @@ function extractTickets(buf) {
       let v = raw[ci];
       if (v == null) v = '';
       // dates may come through as Excel serials; stringify plainly, sync doesn't need to parse them further
-      if ((ci === 1 || ci === 11) && typeof v === 'number') { const ud = Math.floor(v - 25569) * 86400; const d = new Date(ud * 1000); const fd = v - Math.floor(v); const ts = Math.floor(86400 * fd + 0.5); const hh = Math.floor(ts/3600), mm = Math.floor(ts/60)%60; const pad = n => String(n).padStart(2,'0'); v = `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(hh)}:${pad(mm)}`; } obj[label] = v;
+      if ((ci === 1 || ci === 11) && (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && !isNaN(Number(v))))) { const ud = Math.floor(v - 25569) * 86400; const d = new Date(ud * 1000); const fd = v - Math.floor(v); const ts = Math.floor(86400 * fd + 0.5); const hh = Math.floor(ts/3600), mm = Math.floor(ts/60)%60; const pad = n => String(n).padStart(2,'0'); v = `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())} ${pad(hh)}:${pad(mm)}`; } obj[label] = v;
     });
     rows.push(obj);
   }
