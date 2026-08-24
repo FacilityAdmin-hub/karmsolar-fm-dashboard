@@ -18,10 +18,11 @@
   header p{margin:0;opacity:.85;font-size:.9rem;}
   .wrap{max-width:640px;margin:-30px auto 40px;padding:0 16px;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:0 6px 24px rgba(15,42,61,.08);}
-  .status-line{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);margin-bottom:18px;padding:8px 12px;background:#f0f4f3;border-radius:8px;}
+  .status-line{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);margin-bottom:18px;padding:8px 12px;background:#f0f4f3;border-radius:8px;flex-wrap:wrap;}
   .dot{width:9px;height:9px;border-radius:50%;background:#ccc;flex:none;}
   .dot.ok{background:var(--green);}
   .dot.err{background:var(--danger);}
+  .switch-link{margin-left:auto;background:none;border:none;color:var(--green-dark);text-decoration:underline;cursor:pointer;font-size:.78rem;padding:0;}
   label{display:block;font-size:.85rem;font-weight:bold;margin:16px 0 6px;color:var(--navy);}
   input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.95rem;background:#fff;}
   textarea{min-height:100px;resize:vertical;}
@@ -34,7 +35,16 @@
   .msg.error{display:block;background:#fdecea;color:var(--danger);border:1px solid #f5c6c0;}
   .hint{font-size:.78rem;color:var(--muted);margin-top:4px;}
   .signin-box{text-align:center;padding:20px 10px;}
+  .signin-box p{margin:0 0 16px;color:var(--muted);font-size:.9rem;}
   .signin-box button{padding:12px 24px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-size:.95rem;cursor:pointer;}
+  .confirm-box{text-align:center;padding:16px 10px;}
+  .confirm-box .who{font-weight:bold;color:var(--navy);margin:6px 0 18px;font-size:1rem;}
+  .confirm-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+  .confirm-actions button{padding:11px 20px;border-radius:8px;font-size:.9rem;cursor:pointer;border:none;}
+  .btn-continue{background:var(--green);color:#fff;font-weight:bold;}
+  .btn-continue:hover{background:var(--green-dark);}
+  .btn-switch{background:#fff;color:var(--navy);border:1px solid var(--border) !important;}
+  .btn-switch:hover{background:#f0f4f3;}
   footer{text-align:center;color:var(--muted);font-size:.78rem;padding:0 16px 30px;}
 </style>
 </head>
@@ -47,11 +57,24 @@
 
 <div class="wrap">
   <div class="card">
-    <div class="status-line"><span class="dot" id="statusDot"></span><span id="statusText">Connecting to Microsoft 365…</span></div>
+    <div class="status-line">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">Checking sign-in…</span>
+      <button type="button" class="switch-link" id="topSwitchBtn" style="display:none;">Not you? Switch account</button>
+    </div>
 
     <div id="signinBox" class="signin-box" style="display:none;">
-      <p>We couldn't sign you in automatically. Please continue with your KarmSolar Microsoft account to submit a request.</p>
+      <p>Please sign in with your KarmSolar Microsoft account to submit a request.</p>
       <button id="signinBtn">Continue with Microsoft</button>
+    </div>
+
+    <div id="confirmBox" class="confirm-box" style="display:none;">
+      <p style="margin:0;color:var(--muted);font-size:.9rem;">We found you already signed in as:</p>
+      <div class="who" id="confirmWho"></div>
+      <div class="confirm-actions">
+        <button class="btn-continue" id="confirmContinueBtn">Continue as this account</button>
+        <button class="btn-switch" id="confirmSwitchBtn">Sign in with a different account</button>
+      </div>
     </div>
 
     <form id="ticketForm" style="display:none;">
@@ -113,13 +136,13 @@
 </div>
 
 <script>
-// ---- Configuration: KarmSolar Azure AD app + Tickets workbook location ----
 const CLIENT_ID = "f298e7ee-dc78-4c73-816d-1947bebe1380";
 const TENANT_ID = "739fefec-5106-43ec-910f-467d81bbc92c";
 const DRIVE_ID  = "b!QvGoLde_QkyA-E4faLg2X7tMP0sMJWFOkafzETUCUFMmoh-cxvNYQIaj1Ihps5SH";
 const ITEM_ID   = "01TCQY7HJUUMDWBQO3MFA3KU772A2277HV";
 const TABLE_NAME = "Tickets";
 const SCOPES = ["Files.ReadWrite", "User.Read"];
+const REQUIRED_DOMAIN = "karmsolar.com";
 
 const msalConfig = {
   auth: {
@@ -133,7 +156,10 @@ const msalInstance = new msal.PublicClientApplication(msalConfig);
 
 const statusDot = document.getElementById('statusDot');
 const statusText = document.getElementById('statusText');
+const topSwitchBtn = document.getElementById('topSwitchBtn');
 const signinBox = document.getElementById('signinBox');
+const confirmBox = document.getElementById('confirmBox');
+const confirmWho = document.getElementById('confirmWho');
 const form = document.getElementById('ticketForm');
 
 function setStatus(text, state){
@@ -141,50 +167,83 @@ function setStatus(text, state){
   statusDot.className = 'dot' + (state ? ' ' + state : '');
 }
 
+function isAllowedDomain(username){
+  return (username || '').toLowerCase().trim().endsWith('@' + REQUIRED_DOMAIN);
+}
+
+function showSigninBox(msg){
+  signinBox.style.display = 'block';
+  confirmBox.style.display = 'none';
+  form.style.display = 'none';
+  topSwitchBtn.style.display = 'none';
+  setStatus(msg || 'Sign-in required to submit', 'err');
+}
+
 let account = null;
 let accessToken = null;
+let pendingAccount = null;
 
 async function init(){
   await msalInstance.handleRedirectPromise().catch(()=>{});
   const accounts = msalInstance.getAllAccounts();
   if (accounts.length > 0){
-    account = accounts[0];
-    await getTokenSilent();
+    pendingAccount = accounts[0];
+    offerConfirm(pendingAccount);
     return;
   }
-  // try silent SSO against the browser's existing Microsoft 365 session
   try{
     const resp = await msalInstance.ssoSilent({ scopes: SCOPES });
-    account = resp.account;
-    accessToken = resp.accessToken;
-    onSignedIn();
+    pendingAccount = resp.account;
+    offerConfirm(pendingAccount);
   }catch(e){
-    setStatus('Sign-in required to submit', 'err');
-    signinBox.style.display = 'block';
+    showSigninBox();
   }
 }
 
-async function getTokenSilent(){
+function offerConfirm(acc){
+  signinBox.style.display = 'none';
+  form.style.display = 'none';
+  confirmBox.style.display = 'block';
+  confirmWho.textContent = acc.username || acc.name || '(unknown account)';
+  setStatus('Please confirm your account', '');
+}
+
+document.getElementById('confirmContinueBtn').addEventListener('click', async () => {
+  account = pendingAccount;
+  await finishSignIn();
+});
+
+document.getElementById('confirmSwitchBtn').addEventListener('click', () => {
+  msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
+});
+
+document.getElementById('signinBtn').addEventListener('click', () => {
+  msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
+});
+
+topSwitchBtn.addEventListener('click', () => {
+  msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
+});
+
+async function finishSignIn(){
+  if (!isAllowedDomain(account.username)){
+    showSigninBox('That account is not a @' + REQUIRED_DOMAIN + ' account — please sign in with your KarmSolar email.');
+    return;
+  }
   try{
     const resp = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
     accessToken = resp.accessToken;
-    onSignedIn();
   }catch(e){
-    setStatus('Sign-in required to submit', 'err');
-    signinBox.style.display = 'block';
+    msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
+    return;
   }
-}
-
-function onSignedIn(){
   setStatus('Signed in as ' + (account.username || account.name), 'ok');
+  topSwitchBtn.style.display = 'inline';
   document.getElementById('reqEmail').value = account.username || '';
   signinBox.style.display = 'none';
+  confirmBox.style.display = 'none';
   form.style.display = 'block';
 }
-
-document.getElementById('signinBtn').addEventListener('click', () => {
-  msalInstance.loginRedirect({ scopes: SCOPES });
-});
 
 function genTicketId(){
   const now = new Date();
@@ -225,7 +284,6 @@ form.addEventListener('submit', async (e) => {
   ]];
 
   try{
-    // refresh token in case it expired during form-filling
     const resp = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
     accessToken = resp.accessToken;
 
