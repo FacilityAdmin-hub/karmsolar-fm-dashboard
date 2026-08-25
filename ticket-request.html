@@ -284,7 +284,7 @@ form.addEventListener('submit', async (e) => {
   ]];
 
   try{
-    const resp = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
+    const resp = { accessToken };
     accessToken = resp.accessToken;
 
     const url = `https://graph.microsoft.com/v1.0/drives/${DRIVE_ID}/items/${ITEM_ID}/workbook/tables('${TABLE_NAME}')/rows/add`;
