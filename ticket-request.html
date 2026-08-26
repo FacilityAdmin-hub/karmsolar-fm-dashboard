@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KarmSolar FM & Admin — Submit a Request</title>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <style>
   :root{
     --navy:#0f2a3d; --green:#1b7a4a; --green-dark:#145c38;
@@ -18,11 +17,6 @@
   header p{margin:0;opacity:.85;font-size:.9rem;}
   .wrap{max-width:640px;margin:-30px auto 40px;padding:0 16px;}
   .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:0 6px 24px rgba(15,42,61,.08);}
-  .status-line{display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);margin-bottom:18px;padding:8px 12px;background:#f0f4f3;border-radius:8px;flex-wrap:wrap;}
-  .dot{width:9px;height:9px;border-radius:50%;background:#ccc;flex:none;}
-  .dot.ok{background:var(--green);}
-  .dot.err{background:var(--danger);}
-  .switch-link{margin-left:auto;background:none;border:none;color:var(--green-dark);text-decoration:underline;cursor:pointer;font-size:.78rem;padding:0;}
   label{display:block;font-size:.85rem;font-weight:bold;margin:16px 0 6px;color:var(--navy);}
   input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.95rem;background:#fff;}
   textarea{min-height:100px;resize:vertical;}
@@ -33,18 +27,6 @@
   .msg{margin-top:16px;padding:12px 14px;border-radius:8px;font-size:.9rem;display:none;}
   .msg.success{display:block;background:#e7f6ee;color:var(--green-dark);border:1px solid #bfe6cf;}
   .msg.error{display:block;background:#fdecea;color:var(--danger);border:1px solid #f5c6c0;}
-  .hint{font-size:.78rem;color:var(--muted);margin-top:4px;}
-  .signin-box{text-align:center;padding:20px 10px;}
-  .signin-box p{margin:0 0 16px;color:var(--muted);font-size:.9rem;}
-  .signin-box button{padding:12px 24px;border:none;border-radius:8px;background:var(--navy);color:#fff;font-size:.95rem;cursor:pointer;}
-  .confirm-box{text-align:center;padding:16px 10px;}
-  .confirm-box .who{font-weight:bold;color:var(--navy);margin:6px 0 18px;font-size:1rem;}
-  .confirm-actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
-  .confirm-actions button{padding:11px 20px;border-radius:8px;font-size:.9rem;cursor:pointer;border:none;}
-  .btn-continue{background:var(--green);color:#fff;font-weight:bold;}
-  .btn-continue:hover{background:var(--green-dark);}
-  .btn-switch{background:#fff;color:var(--navy);border:1px solid var(--border) !important;}
-  .btn-switch:hover{background:#f0f4f3;}
   footer{text-align:center;color:var(--muted);font-size:.78rem;padding:0 16px 30px;}
 </style>
 </head>
@@ -57,27 +39,7 @@
 
 <div class="wrap">
   <div class="card">
-    <div class="status-line">
-      <span class="dot" id="statusDot"></span>
-      <span id="statusText">Checking sign-in…</span>
-      <button type="button" class="switch-link" id="topSwitchBtn" style="display:none;">Not you? Switch account</button>
-    </div>
-
-    <div id="signinBox" class="signin-box" style="display:none;">
-      <p>Please sign in with your KarmSolar Microsoft account to submit a request.</p>
-      <button id="signinBtn">Continue with Microsoft</button>
-    </div>
-
-    <div id="confirmBox" class="confirm-box" style="display:none;">
-      <p style="margin:0;color:var(--muted);font-size:.9rem;">We found you already signed in as:</p>
-      <div class="who" id="confirmWho"></div>
-      <div class="confirm-actions">
-        <button class="btn-continue" id="confirmContinueBtn">Continue as this account</button>
-        <button class="btn-switch" id="confirmSwitchBtn">Sign in with a different account</button>
-      </div>
-    </div>
-
-    <form id="ticketForm" style="display:none;">
+    <form id="ticketForm">
       <label for="title">Request Title *</label>
       <input type="text" id="title" required maxlength="120" placeholder="e.g. AC not cooling – 2nd floor office">
 
@@ -121,14 +83,13 @@
           <input type="text" id="reqName" required>
         </div>
         <div>
-          <label for="reqEmail">Your Email</label>
-          <input type="email" id="reqEmail" readonly>
-          <p class="hint">Filled in automatically from your sign-in</p>
+          <label for="reqEmail">Your Email *</label>
+          <input type="email" id="reqEmail" required placeholder="you@karmsolar.com">
         </div>
       </div>
 
       <button type="submit" class="submit" id="submitBtn">Submit Request</button>
-      <div class="msg success" id="successMsg">✅ Request submitted — ticket ID <b id="ticketIdOut"></b>. The FM team has been notified.</div>
+      <div class="msg success" id="successMsg">✅ Request submitted. It will appear on the FM team's board within a few minutes.</div>
       <div class="msg error" id="errorMsg">Something went wrong submitting your request. Please try again or contact FM directly.</div>
     </form>
   </div>
@@ -136,122 +97,12 @@
 </div>
 
 <script>
-const CLIENT_ID = "f298e7ee-dc78-4c73-816d-1947bebe1380";
-const TENANT_ID = "739fefec-5106-43ec-910f-467d81bbc92c";
-const DRIVE_ID  = "b!QvGoLde_QkyA-E4faLg2X7tMP0sMJWFOkafzETUCUFMmoh-cxvNYQIaj1Ihps5SH";
-const ITEM_ID   = "01TCQY7HJUUMDWBQO3MFA3KU772A2277HV";
-const TABLE_NAME = "Tickets";
-const SCOPES = ["Files.ReadWrite", "User.Read"];
-const REQUIRED_DOMAIN = "karmsolar.com";
+// This token is intentionally public: it is scoped to ONLY "Issues: write" on
+// this one repository, and can do nothing else (no code/content access).
+const GITHUB_TOKEN = "REPLACE_WITH_FINE_GRAINED_PAT";
+const REPO = "FacilityAdmin-hub/karmsolar-fm-dashboard";
 
-const msalConfig = {
-  auth: {
-    clientId: CLIENT_ID,
-    authority: `https://login.microsoftonline.com/${TENANT_ID}`,
-    redirectUri: window.location.href.split('#')[0].split('?')[0]
-  },
-  cache: { cacheLocation: "memoryStorage", storeAuthStateInCookie: true }
-};
-const msalInstance = new msal.PublicClientApplication(msalConfig);
-
-const statusDot = document.getElementById('statusDot');
-const statusText = document.getElementById('statusText');
-const topSwitchBtn = document.getElementById('topSwitchBtn');
-const signinBox = document.getElementById('signinBox');
-const confirmBox = document.getElementById('confirmBox');
-const confirmWho = document.getElementById('confirmWho');
 const form = document.getElementById('ticketForm');
-
-function setStatus(text, state){
-  statusText.textContent = text;
-  statusDot.className = 'dot' + (state ? ' ' + state : '');
-}
-
-function isAllowedDomain(username){
-  return (username || '').toLowerCase().trim().endsWith('@' + REQUIRED_DOMAIN);
-}
-
-function showSigninBox(msg){
-  signinBox.style.display = 'block';
-  confirmBox.style.display = 'none';
-  form.style.display = 'none';
-  topSwitchBtn.style.display = 'none';
-  setStatus(msg || 'Sign-in required to submit', 'err');
-}
-
-let account = null;
-let accessToken = null;
-let pendingAccount = null;
-
-async function init(){
-  await msalInstance.handleRedirectPromise().catch(()=>{});
-  const accounts = msalInstance.getAllAccounts();
-  if (accounts.length > 0){
-    pendingAccount = accounts[0];
-    offerConfirm(pendingAccount);
-    return;
-  }
-  try{
-    const resp = await msalInstance.ssoSilent({ scopes: SCOPES });
-    pendingAccount = resp.account;
-    offerConfirm(pendingAccount);
-  }catch(e){
-    showSigninBox();
-  }
-}
-
-function offerConfirm(acc){
-  signinBox.style.display = 'none';
-  form.style.display = 'none';
-  confirmBox.style.display = 'block';
-  confirmWho.textContent = acc.username || acc.name || '(unknown account)';
-  setStatus('Please confirm your account', '');
-}
-
-document.getElementById('confirmContinueBtn').addEventListener('click', async () => {
-  account = pendingAccount;
-  await finishSignIn();
-});
-
-document.getElementById('confirmSwitchBtn').addEventListener('click', () => {
-  msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
-});
-
-document.getElementById('signinBtn').addEventListener('click', () => {
-  msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
-});
-
-topSwitchBtn.addEventListener('click', () => {
-  msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
-});
-
-async function finishSignIn(){
-  if (!isAllowedDomain(account.username)){
-    showSigninBox('That account is not a @' + REQUIRED_DOMAIN + ' account — please sign in with your KarmSolar email.');
-    return;
-  }
-  try{
-    const resp = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account });
-    accessToken = resp.accessToken;
-  }catch(e){
-    msalInstance.loginRedirect({ scopes: SCOPES, prompt: 'select_account' });
-    return;
-  }
-  setStatus('Signed in as ' + (account.username || account.name), 'ok');
-  topSwitchBtn.style.display = 'inline';
-  document.getElementById('reqEmail').value = account.username || '';
-  signinBox.style.display = 'none';
-  confirmBox.style.display = 'none';
-  form.style.display = 'block';
-}
-
-function genTicketId(){
-  const now = new Date();
-  const p = n => String(n).padStart(2,'0');
-  const stamp = `${String(now.getFullYear()).slice(2)}${p(now.getMonth()+1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
-  const rand = Math.random().toString(36).slice(2,5).toUpperCase();
-  return `TCK-${stamp}-${rand}`;
-}
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -263,38 +114,29 @@ form.addEventListener('submit', async (e) => {
   submitBtn.disabled = true;
   submitBtn.textContent = 'Submitting…';
 
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0,16).replace('T',' ');
-  const ticketId = genTicketId();
-
-  const rowValues = [[
-    ticketId,
-    dateStr,
-    document.getElementById('title').value,
-    document.getElementById('description').value,
-    document.getElementById('category').value,
-    document.getElementById('priority').value,
-    document.getElementById('site').value,
-    document.getElementById('reqName').value,
-    document.getElementById('reqEmail').value,
-    "Open",
-    "",
-    "",
-    ""
-  ]];
+  const fields = {
+    title: document.getElementById('title').value,
+    description: document.getElementById('description').value,
+    category: document.getElementById('category').value,
+    priority: document.getElementById('priority').value,
+    site: document.getElementById('site').value,
+    requesterName: document.getElementById('reqName').value,
+    requesterEmail: document.getElementById('reqEmail').value
+  };
 
   try{
-    const resp = { accessToken };
-    accessToken = resp.accessToken;
-
-    const url = `https://graph.microsoft.com/v1.0/drives/${DRIVE_ID}/items/${ITEM_ID}/workbook/tables('${TABLE_NAME}')/rows/add`;
-    const res = await fetch(url, {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + accessToken,
+        'Authorization': 'Bearer ' + GITHUB_TOKEN,
+        'Accept': 'application/vnd.github+json',
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ values: rowValues })
+      body: JSON.stringify({
+        title: 'Ticket: ' + fields.title,
+        body: JSON.stringify(fields),
+        labels: ['ticket-submission']
+      })
     });
 
     if (!res.ok){
@@ -302,10 +144,8 @@ form.addEventListener('submit', async (e) => {
       throw new Error(errBody);
     }
 
-    document.getElementById('ticketIdOut').textContent = ticketId;
     successMsg.style.display = 'block';
     form.reset();
-    document.getElementById('reqEmail').value = account.username || '';
   }catch(err){
     console.error(err);
     errorMsg.style.display = 'block';
@@ -314,8 +154,6 @@ form.addEventListener('submit', async (e) => {
     submitBtn.textContent = 'Submit Request';
   }
 });
-
-init();
 </script>
 </body>
 </html>
