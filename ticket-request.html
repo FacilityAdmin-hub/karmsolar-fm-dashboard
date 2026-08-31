@@ -97,10 +97,12 @@
 </div>
 
 <script>
-// This token is intentionally public: it is scoped to ONLY "Issues: write" on
-// this one repository, and can do nothing else (no code/content access).
-const GITHUB_TOKEN = "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";
-const REPO = "FacilityAdmin-hub/karmsolar-fm-dashboard";
+// No secret lives in this file. Submissions go to a small serverless proxy
+// (Cloudflare Worker) which privately holds the real GitHub token and
+// creates the issue on this page's behalf. This keeps the token out of any
+// public file entirely, which is required since GitHub auto-revokes any of
+// its own tokens it detects committed to a public repo.
+const PROXY_URL = "https://karmsolar-ticket-proxy.mohi-mohsen.workers.dev/";
 
 const form = document.getElementById('ticketForm');
 
@@ -125,18 +127,10 @@ form.addEventListener('submit', async (e) => {
   };
 
   try{
-    const res = await fetch(`https://api.github.com/repos/${REPO}/issues`, {
+    const res = await fetch(PROXY_URL, {
       method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + GITHUB_TOKEN,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        title: 'Ticket: ' + fields.title,
-        body: JSON.stringify(fields),
-        labels: ['ticket-submission']
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields)
     });
 
     if (!res.ok){
