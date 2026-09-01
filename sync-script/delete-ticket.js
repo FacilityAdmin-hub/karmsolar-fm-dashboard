@@ -50,7 +50,7 @@ async function findRowIndex(token, driveId, itemId, ticketId) {
 }
 
 async function deleteRow(token, driveId, itemId, index) {
-  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/tables('${TABLE_NAME}')/rows/${index}`;
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/tables('${TABLE_NAME}')/rows/itemAt(index=${index})`;
   const res = await fetch(url, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Row delete failed: ${res.status} ${await res.text()}`);
 }
