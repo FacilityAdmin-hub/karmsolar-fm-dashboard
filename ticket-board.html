@@ -13,6 +13,9 @@
   *{box-sizing:border-box;}
   body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);}
   header{background:linear-gradient(135deg,var(--navy),var(--green-dark));color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
+  .headerLeft{display:flex;align-items:center;gap:14px;}
+  .logoChip{display:inline-flex;align-items:center;background:#fff;border-radius:8px;padding:5px 12px;box-shadow:0 2px 6px rgba(0,0,0,.15);flex-shrink:0;}
+  .logoChip img{display:block;height:24px;width:auto;}
   header h1{margin:0;font-size:1.3rem;}
   .topbar-right{font-size:.8rem;opacity:.85;}
   .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:16px 24px;background:#fff;border-bottom:1px solid var(--border);}
@@ -100,8 +103,11 @@
 <body>
 
 <header>
-  <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/1/2026, 12:59:07 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="headerLeft">
+    <div class="logoChip"><img src="karm-logo.png" alt="Karm logo"></div>
+    <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
+  </div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/1/2026, 12:48:05 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
