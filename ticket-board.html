@@ -55,6 +55,18 @@
   .deleteBtn:hover:not(:disabled){background:var(--danger);color:#fff;}
   .deleteBtn:disabled{opacity:.5;cursor:default;}
 
+  .statusSelect{appearance:none;-webkit-appearance:none;border:none;border-radius:12px;padding:4px 22px 4px 10px;font-size:.72rem;font-weight:bold;color:#fff;cursor:pointer;background-color:var(--muted);background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='white'><path d='M5.5 7.5l4.5 4.5 4.5-4.5z'/></svg>");background-repeat:no-repeat;background-position:right 6px center;background-size:12px;}
+  .statusSelect:disabled{opacity:.6;cursor:default;}
+  .statusSelect.status-Backlog{background-color:#8a8f98;}
+  .statusSelect.status-Open{background-color:#8aa6a0;}
+  .statusSelect.status-InProgress{background-color:#2b6ea3;}
+  .statusSelect.status-InReview{background-color:#6a4c9c;}
+  .statusSelect.status-WaitingApproval{background-color:var(--warn);}
+  .statusSelect.status-Blocked{background-color:var(--danger);}
+  .statusSelect.status-Resolved{background-color:var(--green);}
+  .statusSelect.status-Closed{background-color:#555;}
+  .statusSelect option{color:#000;background:#fff;font-weight:normal;}
+
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;font-size:.85rem;box-shadow:0 4px 16px rgba(0,0,0,.2);display:none;z-index:50;}
 </style>
 </head>
@@ -62,7 +74,7 @@
 
 <header>
   <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/1/2026, 6:43:35 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 8/31/2026, 1:04:35 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -176,7 +188,7 @@ function renderTable(list){
       <td><span class="pill pri-${t['Priority']}">${escapeHtml(t['Priority'])}</span></td>
       <td>${escapeHtml(t['Site / Location'])}</td>
       <td>${escapeHtml(t['Requester Name'])}<div style="color:var(--muted);font-size:.72rem;">${escapeHtml(t['Requester Email'])}</div></td>
-      <td><span class="status-pill ${statusClass(t['Status'])}">${escapeHtml(t['Status'])}</span></td>
+      <td>${statusSelectHtml(t)}</td>
       <td>${escapeHtml(t['Assigned To'])}</td>
       <td><button class="deleteBtn" data-id="${id}" data-title="${escapeHtml(t['Title'])}">Delete</button></td>
     </tr>`;
@@ -184,6 +196,16 @@ function renderTable(list){
   el.querySelectorAll('.deleteBtn').forEach(btn=>{
     btn.addEventListener('click', ()=>deleteTicket(btn.dataset.id, btn.dataset.title, btn));
   });
+  el.querySelectorAll('.statusSelect').forEach(sel=>{
+    sel.addEventListener('change', ()=>updateStatus(sel.dataset.id, sel.value, sel));
+  });
+}
+
+function statusSelectHtml(t){
+  const id = escapeHtml(t['Ticket ID']);
+  const current = t['Status'] || '';
+  const opts = STATUSES.map(s=>`<option value="${s}" ${s===current?'selected':''}>${s}</option>`).join('');
+  return `<select class="statusSelect ${statusClass(current)}" data-id="${id}">${opts}</select>`;
 }
 
 function renderKanban(list){
@@ -195,12 +217,15 @@ function renderKanban(list){
       return `<div class="cardT pri-${t['Priority']}">
         <h4>${escapeHtml(t['Title'])}</h4>
         <div class="meta">${id} · ${escapeHtml(t['Category'])} · ${escapeHtml(t['Site / Location'])}<br>${escapeHtml(t['Requester Name'])}</div>
-        <div class="cardActions"><button class="deleteBtn" data-id="${id}" data-title="${escapeHtml(t['Title'])}">Delete</button></div>
+        <div class="cardActions">${statusSelectHtml(t)} <button class="deleteBtn" data-id="${id}" data-title="${escapeHtml(t['Title'])}">Delete</button></div>
       </div>`;
     }).join('') || '<div style="color:var(--muted);font-size:.78rem;padding:8px;">Empty</div>'}</div>`;
   }).join('')}</div>`;
   el.querySelectorAll('.deleteBtn').forEach(btn=>{
     btn.addEventListener('click', ()=>deleteTicket(btn.dataset.id, btn.dataset.title, btn));
+  });
+  el.querySelectorAll('.statusSelect').forEach(sel=>{
+    sel.addEventListener('change', ()=>updateStatus(sel.dataset.id, sel.value, sel));
   });
 }
 
@@ -233,6 +258,30 @@ async function deleteTicket(id, title, btn){
     console.error(err);
     alert('Delete failed: ' + err.message);
     allBtns.forEach(b=>{ b.disabled = false; b.textContent = 'Delete'; });
+  }
+}
+
+async function updateStatus(id, newStatus, selectEl){
+  const previous = tickets.find(t => t['Ticket ID'] === id);
+  const previousStatus = previous ? previous['Status'] : null;
+  const allSelects = document.querySelectorAll(`.statusSelect[data-id="${CSS.escape(id)}"]`);
+  allSelects.forEach(s=>{ s.disabled = true; });
+  try{
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'update-status', ticketId: id, status: newStatus })
+    });
+    if (!res.ok){ throw new Error(await res.text()); }
+    if (previous) previous['Status'] = newStatus;
+    populateFilters();
+    render();
+    showToast(`${id} → ${newStatus}. Excel + full board sync in progress (usually under a minute).`);
+  }catch(err){
+    console.error(err);
+    alert('Status update failed: ' + err.message);
+    if (selectEl && previousStatus != null) selectEl.value = previousStatus;
+    allSelects.forEach(s=>{ s.disabled = false; });
   }
 }
 
