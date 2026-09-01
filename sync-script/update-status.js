@@ -46,17 +46,38 @@ async function resolveFile(token) {
   return { driveId: item.parentReference.driveId, itemId: item.id };
 }
 
-async function findRowIndex(token, driveId, itemId, ticketId) {
+async function findRow(token, driveId, itemId, ticketId) {
   const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/tables('${TABLE_NAME}')/rows?$select=index,values`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Could not list rows: ${res.status} ${await res.text()}`);
   const json = await res.json();
   const rows = json.value || [];
   for (const row of rows) {
-    const firstCell = row.values && row.values[0] && row.values[0][0];
-    if (String(firstCell || '').trim() === ticketId) return row.index;
+    const values = row.values && row.values[0];
+    if (values && String(values[0] || '').trim() === ticketId) return { index: row.index, values };
   }
   return null;
+}
+
+async function sendNotificationEmail(token, toEmail, toName, subject, htmlBody) {
+  if (!toEmail) return;
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: 'HTML', content: htmlBody },
+        toRecipients: [{ emailAddress: { address: toEmail, name: toName || undefined } }],
+      },
+      saveToSentItems: true,
+    }),
+  });
+  if (!res.ok) {
+    // A failed notification email should never fail the whole status update.
+    console.log('Notification email failed:', res.status, await res.text());
+  }
 }
 
 async function updateStatusCell(token, driveId, itemId, index, status) {
@@ -118,10 +139,18 @@ async function main() {
 
   try {
     console.log('Looking up row for', ticketId, '...');
-    const index = await findRowIndex(token, driveId, itemId, ticketId);
-    if (index == null) throw new Error(`Ticket ${ticketId} not found in table.`);
-    await updateStatusCell(token, driveId, itemId, index, status);
+    const row = await findRow(token, driveId, itemId, ticketId);
+    if (row == null) throw new Error(`Ticket ${ticketId} not found in table.`);
+    await updateStatusCell(token, driveId, itemId, row.index, status);
     console.log('Updated status for', ticketId, 'to', status);
+    const requesterName = row.values[7];
+    const requesterEmail = row.values[8];
+    const title = row.values[2];
+    await sendNotificationEmail(
+      token, requesterEmail, requesterName,
+      `Status updated: ${title}`,
+      `<p>Hi ${requesterName || ''},</p><p>Your ticket <b>${ticketId} — ${title}</b> status changed to <b>${status}</b>.</p>`
+    );
     await closeIssue(ticketId, true, null);
   } catch (err) {
     console.error('Failed to update status:', err.message);

@@ -19,6 +19,8 @@ const COLS = [
   'Status','Assigned To','Date Updated','Resolution Notes'
 ];
 
+const COMMENT_COLS = ['Ticket ID','Timestamp','Type','Author','Content','AttachmentURL'];
+
 async function getAppToken() {
   const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
@@ -70,6 +72,41 @@ function extractTickets(buf) {
   return rows;
 }
 
+function excelSerialToStamp(v) {
+  const ud = Math.floor(v - 25569) * 86400;
+  const d = new Date(ud * 1000);
+  const fd = v - Math.floor(v);
+  const ts = Math.floor(86400 * fd + 0.5);
+  const hh = Math.floor(ts / 3600), mm = Math.floor(ts / 60) % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(hh)}:${pad(mm)}`;
+}
+
+function extractComments(buf) {
+  const wb = XLSX.read(buf, { type: 'buffer', cellDates: false });
+  const sname = wb.SheetNames.find(n => n.replace(/\s+/g, '').toLowerCase() === 'comments');
+  if (!sname) return {};
+  const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sname], { header: 1, raw: true, blankrows: false, defval: '' });
+  if (!aoa.length) return {};
+  const grouped = {};
+  for (let i = 1; i < aoa.length; i++) {
+    const raw = aoa[i] || [];
+    const ticketId = String(raw[0] || '').trim();
+    if (!ticketId) continue;
+    const obj = {};
+    COMMENT_COLS.forEach((label, ci) => {
+      let v = raw[ci];
+      if (v == null) v = '';
+      if (ci === 1 && typeof v === 'number') v = excelSerialToStamp(v);
+      obj[label] = v;
+    });
+    if (!grouped[ticketId]) grouped[ticketId] = [];
+    grouped[ticketId].push(obj);
+  }
+  Object.values(grouped).forEach(arr => arr.sort((a, b) => String(a['Timestamp']).localeCompare(String(b['Timestamp']))));
+  return grouped;
+}
+
 function patchEmbedded(htmlContent, tickets) {
   const marker = 'const EMBEDDED_TICKETS = ';
   const startIdx = htmlContent.indexOf(marker);
@@ -81,6 +118,20 @@ function patchEmbedded(htmlContent, tickets) {
   const before = htmlContent.slice(0, jsonStart);
   const after = htmlContent.slice(endIdx + 1); // "]" consumed by JSON.stringify, keep ";\n" + rest
   const newJson = JSON.stringify(tickets);
+  return before + newJson + after;
+}
+
+function patchEmbeddedComments(htmlContent, commentsByTicket) {
+  const marker = 'const EMBEDDED_COMMENTS = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) throw new Error('Could not find "const EMBEDDED_COMMENTS = " in ticket-board.html — has the file structure changed?');
+  const jsonStart = startIdx + marker.length;
+  const endMarker = '};\n';
+  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED_COMMENTS object in ticket-board.html');
+  const before = htmlContent.slice(0, jsonStart);
+  const after = htmlContent.slice(endIdx + 1); // "}" consumed by JSON.stringify, keep ";\n" + rest
+  const newJson = JSON.stringify(commentsByTicket);
   return before + newJson + after;
 }
 
@@ -103,16 +154,19 @@ async function main() {
   console.log(`Downloaded ${(buf.length / 1024).toFixed(1)} KB. Extracting Tickets table...`);
   const tickets = extractTickets(buf);
   console.log('Extracted', tickets.length, 'tickets.');
+  const comments = extractComments(buf);
+  console.log('Extracted comments/attachments for', Object.keys(comments).length, 'tickets.');
 
   console.log('Reading', BOARD_HTML_PATH, '...');
   const html = fs.readFileSync(BOARD_HTML_PATH, 'utf-8');
   let patched = patchEmbedded(html, tickets);
+  patched = patchEmbeddedComments(patched, comments);
   patched = patchSourceLabel(patched);
   fs.writeFileSync(BOARD_HTML_PATH, patched, 'utf-8');
   console.log('ticket-board.html updated with fresh data and current label.');
 }
 
-module.exports = { patchEmbedded, patchSourceLabel, extractTickets, getAppToken, downloadWorkbook };
+module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
   main().catch(err => {
