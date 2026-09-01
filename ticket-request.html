@@ -28,7 +28,6 @@
   button.submit:hover:not(:disabled){background:var(--green-dark);}
   .msg{margin-top:16px;padding:12px 14px;border-radius:8px;font-size:.9rem;display:none;}
   .msg.success{display:block;background:#e7f6ee;color:var(--green-dark);border:1px solid #bfe6cf;}
-  .msg.error{display:block;background:#fdecea;color:var(--danger);border:1px solid #f5c6c0;}
   footer{text-align:center;color:var(--muted);font-size:.78rem;padding:0 16px 30px;}
 </style>
 </head>
@@ -93,7 +92,6 @@
 
       <button type="submit" class="submit" id="submitBtn">Submit Request</button>
       <div class="msg success" id="successMsg">✅ Request submitted. It will appear on the FM team's board within a few minutes.</div>
-      <div class="msg error" id="errorMsg">Something went wrong submitting your request. Please try again or contact FM directly.</div>
     </form>
   </div>
   <footer>KarmSolar Facility Management &amp; Admin · Internal use only</footer>
@@ -113,9 +111,7 @@ form.addEventListener('submit', async (e) => {
   e.preventDefault();
   const submitBtn = document.getElementById('submitBtn');
   const successMsg = document.getElementById('successMsg');
-  const errorMsg = document.getElementById('errorMsg');
   successMsg.style.display = 'none';
-  errorMsg.style.display = 'none';
   submitBtn.disabled = true;
   submitBtn.textContent = 'Submitting…';
 
@@ -145,7 +141,6 @@ form.addEventListener('submit', async (e) => {
     form.reset();
   }catch(err){
     console.error(err);
-    errorMsg.style.display = 'block';
   }finally{
     submitBtn.disabled = false;
     submitBtn.textContent = 'Submit Request';
