@@ -68,13 +68,40 @@
   .statusSelect option{color:#000;background:#fff;font-weight:normal;}
 
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 18px;border-radius:8px;font-size:.85rem;box-shadow:0 4px 16px rgba(0,0,0,.2);display:none;z-index:50;}
+
+  .modalOverlay{display:none;position:fixed;inset:0;background:rgba(15,42,61,.55);z-index:100;align-items:flex-start;justify-content:center;padding:40px 16px;overflow-y:auto;}
+  .modalOverlay.open{display:flex;}
+  .modalPanel{background:#fff;border-radius:12px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .modalHeader{display:flex;justify-content:space-between;align-items:flex-start;padding:20px 24px;border-bottom:1px solid var(--border);}
+  .modalHeader h2{margin:0 0 4px;font-size:1.15rem;color:var(--navy);}
+  .modalHeader .modalId{font-size:.78rem;color:var(--muted);}
+  .modalClose{border:none;background:none;font-size:1.4rem;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px;}
+  .modalBody{padding:20px 24px;max-height:70vh;overflow-y:auto;}
+  .detailGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin-bottom:18px;font-size:.85rem;}
+  .detailGrid .full{grid-column:1 / -1;}
+  .detailGrid label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-bottom:2px;}
+  .detailGrid .val{color:var(--text);}
+  .modalSection{margin-top:20px;border-top:1px solid var(--border);padding-top:16px;}
+  .modalSection h3{margin:0 0 10px;font-size:.9rem;color:var(--navy);}
+  .commentItem{background:#f7faf9;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.82rem;}
+  .commentItem .commentMeta{color:var(--muted);font-size:.72rem;margin-bottom:4px;}
+  .commentItem a{color:var(--green-dark);}
+  .commentForm{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+  .commentForm input[type=text],.commentForm textarea{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;}
+  .commentForm textarea{min-height:60px;resize:vertical;}
+  .commentForm .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .btnGreen{background:var(--green);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:.82rem;font-weight:bold;cursor:pointer;}
+  .btnGreen:hover:not(:disabled){background:var(--green-dark);}
+  .btnGreen:disabled{opacity:.6;cursor:default;}
+  .clickableRow{cursor:pointer;}
+  .clickableCard{cursor:pointer;}
 </style>
 </head>
 <body>
 
 <header>
   <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/1/2026, 8:13:20 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 8/31/2026, 1:04:35 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -104,6 +131,19 @@
 
 <div id="toast"></div>
 
+<div class="modalOverlay" id="modalOverlay">
+  <div class="modalPanel">
+    <div class="modalHeader">
+      <div>
+        <h2 id="modalTitle"></h2>
+        <div class="modalId" id="modalTicketId"></div>
+      </div>
+      <button class="modalClose" id="modalCloseBtn">&times;</button>
+    </div>
+    <div class="modalBody" id="modalBody"></div>
+  </div>
+</div>
+
 <script>
 // No secret lives in this file. Deletes go through the same small serverless
 // proxy (Cloudflare Worker) the submission form uses — it privately holds the
@@ -112,12 +152,18 @@ const PROXY_URL = "https://karmsolar-ticket-proxy.mohi-mohsen.workers.dev/";
 
 // Baked in fresh every ~5 minutes by .github/workflows/ticket-sync.yml — this page
 // never talks to Microsoft Graph itself, so it needs no sign-in for anyone viewing it.
-const EMBEDDED_TICKETS = [{"Ticket ID":"TCK-260825-103352-IMJ","Date Submitted":"2026-08-25 07:33","Title":"TEST","Description":"TEST","Category":"IT / Equipment","Priority":"Medium","Site / Location":"TEST","Requester Name":"teat ","Requester Email":"mohi.mohsen@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260826-091433-H7Y","Date Submitted":"2026-08-26 09:14","Title":"End-to-end pipeline test","Description":"Testing the Issue-Action-Excel pipeline.","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Pipeline Test","Requester Email":"test@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260830-094613-YU3","Date Submitted":"2026-08-30 09:46","Title":"test","Description":"verifying token before embedding","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Pre-check","Requester Email":"precheck@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260830-123943-ZJG","Date Submitted":"2026-08-30 12:39","Title":"final-token-verify","Description":"testing after replacing the secret with a fresh unused token","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Final Verify","Requester Email":"finalverify@karmsolar.com","Status":"In Review","Assigned To":"","Date Updated":"2026-09-01 08:13","Resolution Notes":""}];
+const EMBEDDED_TICKETS = [{"Ticket ID":"TCK-260825-103352-IMJ","Date Submitted":"2026-08-25 07:33","Title":"TEST","Description":"TEST","Category":"IT / Equipment","Priority":"Medium","Site / Location":"TEST","Requester Name":"teat ","Requester Email":"mohi.mohsen@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260826-091433-H7Y","Date Submitted":"2026-08-26 09:14","Title":"End-to-end pipeline test","Description":"Testing the Issue-Action-Excel pipeline.","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Pipeline Test","Requester Email":"test@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260830-094613-YU3","Date Submitted":"2026-08-30 09:46","Title":"test","Description":"verifying token before embedding","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Pre-check","Requester Email":"precheck@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260830-123943-ZJG","Date Submitted":"2026-08-30 12:39","Title":"final-token-verify","Description":"testing after replacing the secret with a fresh unused token","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Final Verify","Requester Email":"finalverify@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260831-073422-J7B","Date Submitted":"2026-08-31 07:34","Title":"Truly final live test - proxy architecture","Description":"Confirming the no-sign-in, no-public-token proxy pipeline works completely through the real public page.","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Truly Final Test","Requester Email":"trulyfinal@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260831-074454-0LT","Date Submitted":"2026-08-31 07:44","Title":"test","Description":"mohi test","Category":"Other","Priority":"Urgent","Site / Location":"mohi test ","Requester Name":"Mohi (test)","Requester Email":"mohi.mohsen@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260831-080353-F0B","Date Submitted":"2026-08-31 08:03","Title":"  ff","Description":"fff","Category":"Catering","Priority":"Low","Site / Location":"dsbs","Requester Name":"fghfgh","Requester Email":"mostafa.abuelmagd@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""},{"Ticket ID":"TCK-260831-091817-15S","Date Submitted":"2026-08-31 09:18","Title":"Sync speed test v2","Description":"checking proxy directly","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"Sync Test","Requester Email":"synctest2@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""}];
+const EMBEDDED_COMMENTS = {};
 
 // Full JIRA-like workflow. Order here also drives "Sort: Status (workflow order)".
 const STATUSES = ["Backlog","Open","In Progress","In Review","Waiting Approval","Blocked","Resolved","Closed"];
 const PRIORITIES = ["Low","Medium","High","Urgent"];
 let tickets = EMBEDDED_TICKETS;
+
+// Comments/attachments grouped by Ticket ID, baked in by ticket-sync.yml from the
+// "Comments" sheet in FM Tickets.xlsx. Mutable copy so new comments/attachments
+// appear immediately without waiting for the next sync.
+let commentsByTicket = JSON.parse(JSON.stringify(EMBEDDED_COMMENTS || {}));
 
 function populateFilters(){
   const cats = [...new Set(tickets.map(t=>t['Category']).filter(Boolean))];
@@ -180,7 +226,7 @@ function renderTable(list){
     <th>ID</th><th>Submitted</th><th>Title</th><th>Category</th><th>Priority</th><th>Site</th><th>Requester</th><th>Status</th><th>Assigned To</th><th>Actions</th>
   </tr></thead><tbody>${list.map(t=>{
     const id = escapeHtml(t['Ticket ID']);
-    return `<tr>
+    return `<tr class="clickableRow" data-open-id="${id}">
       <td>${id}</td>
       <td>${escapeHtml(t['Date Submitted'])}</td>
       <td><b>${escapeHtml(t['Title'])}</b><div style="color:var(--muted);font-size:.75rem;margin-top:2px;">${escapeHtml((t['Description']||'').slice(0,80))}</div></td>
@@ -194,10 +240,14 @@ function renderTable(list){
     </tr>`;
   }).join('')}</tbody></table>`;
   el.querySelectorAll('.deleteBtn').forEach(btn=>{
-    btn.addEventListener('click', ()=>deleteTicket(btn.dataset.id, btn.dataset.title, btn));
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteTicket(btn.dataset.id, btn.dataset.title, btn); });
   });
   el.querySelectorAll('.statusSelect').forEach(sel=>{
+    sel.addEventListener('click', e=>e.stopPropagation());
     sel.addEventListener('change', ()=>updateStatus(sel.dataset.id, sel.value, sel));
+  });
+  el.querySelectorAll('.clickableRow').forEach(row=>{
+    row.addEventListener('click', ()=>openModal(row.dataset.openId));
   });
 }
 
@@ -214,7 +264,7 @@ function renderKanban(list){
     const items = list.filter(t=>t['Status']===s);
     return `<div class="col"><h3>${s} <span>${items.length}</span></h3>${items.map(t=>{
       const id = escapeHtml(t['Ticket ID']);
-      return `<div class="cardT pri-${t['Priority']}">
+      return `<div class="cardT pri-${t['Priority']} clickableCard" data-open-id="${id}">
         <h4>${escapeHtml(t['Title'])}</h4>
         <div class="meta">${id} · ${escapeHtml(t['Category'])} · ${escapeHtml(t['Site / Location'])}<br>${escapeHtml(t['Requester Name'])}</div>
         <div class="cardActions">${statusSelectHtml(t)} <button class="deleteBtn" data-id="${id}" data-title="${escapeHtml(t['Title'])}">Delete</button></div>
@@ -222,10 +272,14 @@ function renderKanban(list){
     }).join('') || '<div style="color:var(--muted);font-size:.78rem;padding:8px;">Empty</div>'}</div>`;
   }).join('')}</div>`;
   el.querySelectorAll('.deleteBtn').forEach(btn=>{
-    btn.addEventListener('click', ()=>deleteTicket(btn.dataset.id, btn.dataset.title, btn));
+    btn.addEventListener('click', (e)=>{ e.stopPropagation(); deleteTicket(btn.dataset.id, btn.dataset.title, btn); });
   });
   el.querySelectorAll('.statusSelect').forEach(sel=>{
+    sel.addEventListener('click', e=>e.stopPropagation());
     sel.addEventListener('change', ()=>updateStatus(sel.dataset.id, sel.value, sel));
+  });
+  el.querySelectorAll('.clickableCard').forEach(card=>{
+    card.addEventListener('click', ()=>openModal(card.dataset.openId));
   });
 }
 
@@ -276,7 +330,8 @@ async function updateStatus(id, newStatus, selectEl){
     if (previous) previous['Status'] = newStatus;
     populateFilters();
     render();
-    showToast(`${id} → ${newStatus}. Excel + full board sync in progress (usually under a minute).`);
+    showToast(`${id} → ${newStatus}. Excel + full board sync in progress (usually under a minute). The requester will get an email too.`);
+    if (modalOpenId === id) renderModal(id);
   }catch(err){
     console.error(err);
     alert('Status update failed: ' + err.message);
@@ -284,6 +339,157 @@ async function updateStatus(id, newStatus, selectEl){
     allSelects.forEach(s=>{ s.disabled = false; });
   }
 }
+
+// ---- Ticket detail modal: full fields + comments/attachments thread ----
+
+let modalOpenId = null;
+
+function getYourName(){
+  return localStorage.getItem('fm_commenter_name') || '';
+}
+function setYourName(name){
+  try{ localStorage.setItem('fm_commenter_name', name); }catch(e){}
+}
+
+function openModal(id){
+  modalOpenId = id;
+  renderModal(id);
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal(){
+  modalOpenId = null;
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+function renderModal(id){
+  const t = tickets.find(x => x['Ticket ID'] === id);
+  if (!t){ closeModal(); return; }
+  document.getElementById('modalTitle').textContent = t['Title'] || '(untitled)';
+  document.getElementById('modalTicketId').textContent = id;
+
+  const fieldsHtml = `
+    <div class="detailGrid">
+      <div><label>Status</label><div class="val">${statusSelectHtml(t)}</div></div>
+      <div><label>Priority</label><div class="val"><span class="pill pri-${t['Priority']}">${escapeHtml(t['Priority'])}</span></div></div>
+      <div><label>Category</label><div class="val">${escapeHtml(t['Category'])}</div></div>
+      <div><label>Site / Location</label><div class="val">${escapeHtml(t['Site / Location'])}</div></div>
+      <div><label>Requester</label><div class="val">${escapeHtml(t['Requester Name'])}<br>${escapeHtml(t['Requester Email'])}</div></div>
+      <div><label>Assigned To</label><div class="val">${escapeHtml(t['Assigned To']) || '—'}</div></div>
+      <div><label>Date Submitted</label><div class="val">${escapeHtml(t['Date Submitted'])}</div></div>
+      <div><label>Date Updated</label><div class="val">${escapeHtml(t['Date Updated']) || '—'}</div></div>
+      <div class="full"><label>Description</label><div class="val">${escapeHtml(t['Description']).replace(/\n/g,'<br>')}</div></div>
+      ${t['Resolution Notes'] ? `<div class="full"><label>Resolution Notes</label><div class="val">${escapeHtml(t['Resolution Notes']).replace(/\n/g,'<br>')}</div></div>` : ''}
+    </div>`;
+
+  const items = (commentsByTicket[id] || []);
+  const commentsHtml = items.length ? items.map(c=>{
+    if (c['Type'] === 'Attachment'){
+      return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])} · attached a file</div>📎 <a href="${escapeHtml(c['AttachmentURL'])}" target="_blank" rel="noopener">${escapeHtml(c['Content'])}</a></div>`;
+    }
+    return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])}</div>${escapeHtml(c['Content']).replace(/\n/g,'<br>')}</div>`;
+  }).join('') : '<div style="color:var(--muted);font-size:.82rem;">No comments or attachments yet.</div>';
+
+  document.getElementById('modalBody').innerHTML = `
+    ${fieldsHtml}
+    <div class="modalSection">
+      <h3>Activity</h3>
+      <div id="commentList">${commentsHtml}</div>
+      <div class="commentForm">
+        <input type="text" id="commenterName" placeholder="Your name" value="${escapeHtml(getYourName())}">
+        <textarea id="commentText" placeholder="Add a comment for the requester..."></textarea>
+        <div class="row">
+          <button class="btnGreen" id="submitCommentBtn">Post comment</button>
+          <label class="btnGreen" style="background:var(--muted);cursor:pointer;">
+            Attach file <input type="file" id="attachmentInput" style="display:none;">
+          </label>
+          <span id="attachmentFileName" style="font-size:.78rem;color:var(--muted);"></span>
+        </div>
+      </div>
+    </div>`;
+
+  document.querySelectorAll('#modalBody .statusSelect').forEach(sel=>{
+    sel.addEventListener('change', ()=>updateStatus(sel.dataset.id, sel.value, sel));
+  });
+  document.getElementById('submitCommentBtn').addEventListener('click', ()=>submitComment(id));
+  document.getElementById('attachmentInput').addEventListener('change', (e)=>{
+    const f = e.target.files[0];
+    document.getElementById('attachmentFileName').textContent = f ? f.name : '';
+    if (f) submitAttachment(id, f);
+  });
+}
+
+async function submitComment(id){
+  const nameEl = document.getElementById('commenterName');
+  const textEl = document.getElementById('commentText');
+  const author = (nameEl.value || 'Anonymous').trim();
+  const comment = textEl.value.trim();
+  if (!comment) return;
+  setYourName(author);
+  const btn = document.getElementById('submitCommentBtn');
+  btn.disabled = true; btn.textContent = 'Posting…';
+  try{
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-comment', ticketId: id, author, comment })
+    });
+    if (!res.ok){ throw new Error(await res.text()); }
+    if (!commentsByTicket[id]) commentsByTicket[id] = [];
+    commentsByTicket[id].push({ 'Ticket ID': id, Timestamp: 'just now', Type: 'Comment', Author: author, Content: comment, AttachmentURL: '' });
+    textEl.value = '';
+    renderModal(id);
+    showToast('Comment posted — the requester has been emailed.');
+  }catch(err){
+    console.error(err);
+    alert('Could not post comment: ' + err.message);
+    btn.disabled = false; btn.textContent = 'Post comment';
+  }
+}
+
+function readFileAsBase64(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result; // "data:<type>;base64,<data>"
+      const base64 = String(result).split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Could not read file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function submitAttachment(id, file){
+  const nameEl = document.getElementById('commenterName');
+  const author = (nameEl.value || 'Anonymous').trim();
+  setYourName(author);
+  const nameLabel = document.getElementById('attachmentFileName');
+  nameLabel.textContent = `Uploading ${file.name}…`;
+  try{
+    const dataBase64 = await readFileAsBase64(file);
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-attachment', ticketId: id, author, filename: file.name, contentType: file.type || 'application/octet-stream', dataBase64 })
+    });
+    if (!res.ok){ throw new Error(await res.text()); }
+    const data = await res.json().catch(()=>({}));
+    if (!commentsByTicket[id]) commentsByTicket[id] = [];
+    commentsByTicket[id].push({ 'Ticket ID': id, Timestamp: 'just now', Type: 'Attachment', Author: author, Content: file.name, AttachmentURL: data.url || '#' });
+    renderModal(id);
+    showToast('Attachment uploaded — the requester has been emailed.');
+  }catch(err){
+    console.error(err);
+    alert('Could not upload attachment: ' + err.message);
+    nameLabel.textContent = '';
+  }
+}
+
+document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', (e)=>{
+  if (e.target.id === 'modalOverlay') closeModal();
+});
 
 ['searchBox'].forEach(id=>document.getElementById(id).addEventListener('input', render));
 ['filterStatus','filterCategory','filterPriority','sortBy'].forEach(id=>document.getElementById(id).addEventListener('change', render));
