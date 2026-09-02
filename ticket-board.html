@@ -107,7 +107,7 @@
     <div class="logoChip"><img src="karm-logo.png" alt="Karm logo"></div>
     <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
   </div>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/2/2026, 7:51:57 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/2/2026, 7:59:58 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -159,7 +159,7 @@ const PROXY_URL = "https://karmsolar-ticket-proxy.mohi-mohsen.workers.dev/";
 // Baked in fresh every ~5 minutes by .github/workflows/ticket-sync.yml — this page
 // never talks to Microsoft Graph itself, so it needs no sign-in for anyone viewing it.
 const EMBEDDED_TICKETS = [{"Ticket ID":"TCK-260902-074505-88Y","Date Submitted":"2026-09-02 07:45","Title":"test","Description":"mohi test ","Category":"Maintenance","Priority":"Urgent","Site / Location":"HQ","Requester Name":"Mohi (test)","Requester Email":"mohi.mohsen@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""}];
-const EMBEDDED_COMMENTS = {"TCK-260825-103352-IMJ":[{"Ticket ID":"TCK-260825-103352-IMJ","Timestamp":"2026-09-01 10:41","Type":"Comment","Author":"Anonymous","Content":"End to end verification comment.","AttachmentURL":""},{"Ticket ID":"TCK-260825-103352-IMJ","Timestamp":"2026-09-01 11:32","Type":"Comment","Author":"Anonymous","Content":"Verifying email notification after Mail.Send consent.","AttachmentURL":""}]};
+const EMBEDDED_COMMENTS = {"TCK-260825-103352-IMJ":[{"Ticket ID":"TCK-260825-103352-IMJ","Timestamp":"2026-09-01 10:41","Type":"Comment","Author":"Anonymous","Content":"End to end verification comment.","AttachmentURL":""},{"Ticket ID":"TCK-260825-103352-IMJ","Timestamp":"2026-09-01 11:32","Type":"Comment","Author":"Anonymous","Content":"Verifying email notification after Mail.Send consent.","AttachmentURL":""}],"TCK-260902-074505-88Y":[{"Ticket ID":"TCK-260902-074505-88Y","Timestamp":"2026-09-02 07:53","Type":"Comment","Author":"mohi","Content":"testing 567","AttachmentURL":""}]};
 
 // Full JIRA-like workflow. Order here also drives "Sort: Status (workflow order)".
 const STATUSES = ["Backlog","Open","In Progress","In Review","Waiting Approval","Blocked","Resolved","Closed"];
