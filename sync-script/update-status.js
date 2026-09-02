@@ -94,6 +94,24 @@ async function updateStatusCell(token, driveId, itemId, index, status) {
     body: JSON.stringify({ values: [rowValues] }),
   });
   if (!res.ok) throw new Error(`Row update failed: ${res.status} ${await res.text()}`);
+  return dateStr;
+}
+
+// Best-effort: log the status change as an activity row in the Comments table,
+// the same table comments/attachments already write to, so the board's
+// per-ticket activity thread shows status changes too. Never fails the status
+// update itself if this write has trouble (e.g. Comments table missing).
+async function logStatusChangeToComments(token, driveId, itemId, ticketId, status, timestamp) {
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/tables('Comments')/rows`;
+  const rowValues = [ticketId, timestamp, 'Status', 'System', `Status changed to ${status}`, ''];
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: [rowValues] }),
+  });
+  if (!res.ok) {
+    console.log('Could not log status change to Comments (table may not exist yet):', res.status, await res.text());
+  }
 }
 
 async function closeIssue(ticketId, ok, errMsg) {
@@ -141,8 +159,15 @@ async function main() {
     console.log('Looking up row for', ticketId, '...');
     const row = await findRow(token, driveId, itemId, ticketId);
     if (row == null) throw new Error(`Ticket ${ticketId} not found in table.`);
-    await updateStatusCell(token, driveId, itemId, row.index, status);
+    const timestamp = await updateStatusCell(token, driveId, itemId, row.index, status);
     console.log('Updated status for', ticketId, 'to', status);
+
+    try {
+      await logStatusChangeToComments(token, driveId, itemId, ticketId, status, timestamp);
+    } catch (logErr) {
+      console.log('Status-change activity log failed (non-fatal):', logErr.message);
+    }
+
     const requesterName = row.values[7];
     const requesterEmail = row.values[8];
     const title = row.values[2];
