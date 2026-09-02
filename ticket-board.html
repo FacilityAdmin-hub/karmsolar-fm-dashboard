@@ -107,7 +107,7 @@
     <div class="logoChip"><img src="karm-logo.png" alt="Karm logo"></div>
     <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
   </div>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/2/2026, 7:01:14 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/1/2026, 2:48:33 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -334,6 +334,8 @@ async function updateStatus(id, newStatus, selectEl){
     });
     if (!res.ok){ throw new Error(await res.text()); }
     if (previous) previous['Status'] = newStatus;
+    if (!commentsByTicket[id]) commentsByTicket[id] = [];
+    commentsByTicket[id].push({ 'Ticket ID': id, Timestamp: 'just now', Type: 'Status', Author: 'System', Content: `Status changed to ${newStatus}`, AttachmentURL: '' });
     populateFilters();
     render();
     showToast(`${id} → ${newStatus}. Excel + full board sync in progress (usually under a minute). The requester will get an email too.`);
@@ -392,6 +394,9 @@ function renderModal(id){
   const commentsHtml = items.length ? items.map(c=>{
     if (c['Type'] === 'Attachment'){
       return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])} · attached a file</div>📎 <a href="${escapeHtml(c['AttachmentURL'])}" target="_blank" rel="noopener">${escapeHtml(c['Content'])}</a></div>`;
+    }
+    if (c['Type'] === 'Status'){
+      return `<div class="commentItem" style="background:#eef4fb;"><div class="commentMeta">${escapeHtml(c['Timestamp'])}</div>🔄 <em>${escapeHtml(c['Content'])}</em></div>`;
     }
     return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])}</div>${escapeHtml(c['Content']).replace(/\n/g,'<br>')}</div>`;
   }).join('') : '<div style="color:var(--muted);font-size:.82rem;">No comments or attachments yet.</div>';
