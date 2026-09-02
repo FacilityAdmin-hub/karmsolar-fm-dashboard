@@ -107,7 +107,7 @@
     <div class="logoChip"><img src="karm-logo.png" alt="Karm logo"></div>
     <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
   </div>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/1/2026, 2:48:33 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 9/2/2026, 7:14:57 AM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -158,7 +158,7 @@ const PROXY_URL = "https://karmsolar-ticket-proxy.mohi-mohsen.workers.dev/";
 
 // Baked in fresh every ~5 minutes by .github/workflows/ticket-sync.yml — this page
 // never talks to Microsoft Graph itself, so it needs no sign-in for anyone viewing it.
-const EMBEDDED_TICKETS = [];
+const EMBEDDED_TICKETS = [{"Ticket ID":"TCK-260902-071435-E8P","Date Submitted":"2026-09-02 07:14","Title":"Cascade-delete + status-log test","Description":"Verifying status changes log to Comments and delete cascades cleanup.","Category":"Other","Priority":"Low","Site / Location":"HQ","Requester Name":"QA Test","Requester Email":"qatest@karmsolar.com","Status":"Open","Assigned To":"","Date Updated":"","Resolution Notes":""}];
 const EMBEDDED_COMMENTS = {"TCK-260825-103352-IMJ":[{"Ticket ID":"TCK-260825-103352-IMJ","Timestamp":"2026-09-01 10:41","Type":"Comment","Author":"Anonymous","Content":"End to end verification comment.","AttachmentURL":""},{"Ticket ID":"TCK-260825-103352-IMJ","Timestamp":"2026-09-01 11:32","Type":"Comment","Author":"Anonymous","Content":"Verifying email notification after Mail.Send consent.","AttachmentURL":""}]};
 
 // Full JIRA-like workflow. Order here also drives "Sort: Status (workflow order)".
