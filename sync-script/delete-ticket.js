@@ -55,6 +55,36 @@ async function deleteRow(token, driveId, itemId, index) {
   if (!res.ok) throw new Error(`Row delete failed: ${res.status} ${await res.text()}`);
 }
 
+// Best-effort cleanup: remove every row in the Comments table that belongs to
+// this ticket, so deleted tickets don't leave orphaned comments/attachments
+// behind. Deletes highest index first so earlier indexes stay valid as we go.
+async function deleteCommentsForTicket(token, driveId, itemId, ticketId) {
+  const url = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/tables('Comments')/rows?$select=index,values`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    console.log('Could not list Comments rows (table may not exist yet):', res.status, await res.text());
+    return 0;
+  }
+  const json = await res.json();
+  const rows = json.value || [];
+  const matchingIndexes = rows
+    .filter(row => {
+      const vals = row.values && row.values[0];
+      return vals && String(vals[0] || '').trim() === ticketId;
+    })
+    .map(row => row.index)
+    .sort((a, b) => b - a); // delete from the bottom up so indexes stay valid
+
+  for (const idx of matchingIndexes) {
+    const delUrl = `https://graph.microsoft.com/v1.0/drives/${driveId}/items/${itemId}/workbook/tables('Comments')/rows/itemAt(index=${idx})`;
+    const delRes = await fetch(delUrl, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+    if (!delRes.ok) {
+      console.log('Could not delete Comments row at index', idx, ':', delRes.status, await delRes.text());
+    }
+  }
+  return matchingIndexes.length;
+}
+
 async function closeIssue(ticketId, ok, errMsg) {
   if (!GITHUB_TOKEN || !REPO || !ISSUE_NUMBER) return;
   const commentUrl = `https://api.github.com/repos/${REPO}/issues/${ISSUE_NUMBER}/comments`;
@@ -100,6 +130,15 @@ async function main() {
     if (index == null) throw new Error(`Ticket ${ticketId} not found in table (already deleted?).`);
     await deleteRow(token, driveId, itemId, index);
     console.log('Deleted row for', ticketId);
+
+    try {
+      const cleaned = await deleteCommentsForTicket(token, driveId, itemId, ticketId);
+      console.log('Cleaned up', cleaned, 'Comments row(s) for', ticketId);
+    } catch (cleanupErr) {
+      // Never fail the ticket deletion just because comments cleanup hiccuped.
+      console.log('Comments cleanup failed (non-fatal):', cleanupErr.message);
+    }
+
     await closeIssue(ticketId, true, null);
   } catch (err) {
     console.error('Failed to delete row:', err.message);
