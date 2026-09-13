@@ -280,9 +280,8 @@ body.editcards .cardx{display:inline-flex}
       <a data-pg="procurement" class=""><span class="ic">📊</span>Procurement Benchmark</a>
       <a data-pg="assetguide" class=""><span class="ic">📘</span>Asset Reference Guide</a>
       <a data-pg="sop" class=""><span class="ic">📋</span>Facility SOP</a>
-      <a data-pg="update" class=""><span class="ic">⟳</span>Update &amp; share</a>
     </nav>
-    <div class="side-foot">Edit values inline, refresh from a file,<br>and export back to Excel.</div>
+    <div class="side-foot">Edit values inline and export back to Excel.<br>Data syncs automatically from the live workbook.</div>
   </aside>
   <div class="scrim" id="scrim"></div>
   <main class="main">
@@ -297,7 +296,6 @@ body.editcards .cardx{display:inline-flex}
         <button class="btn" id="sizeBtn">⛶ Edit layout</button>
         <button class="btn" id="exportBtn">⤓ Excel</button>
         <button class="btn" id="dlBtn">⬇ Save dashboard</button>
-        <button class="btn solar" id="goUpdate">⟳ Update</button>
       </div>
     </header>
     <div class="editbar" id="editbar">Edit mode is on — change any highlighted cell <b>and click any title, heading, caption or table header to rename it</b>. Charts update live. Use <b>⤓ Excel</b> to save data edits, then re-upload to keep them permanently.</div>
@@ -647,8 +645,7 @@ const meta={overview:['Overview','A single view across every admin & facilities 
   contracts:['Contracts','Leases, renewals, expiries and total rent exposure'],
   couriers:['Couriers','Courier requests by month and requesting department'],
   budget:['Budget','Four budget books compiled \u2014 estimated vs actual'],
-  issues:['Issues & requests','HQ and site issues \u2014 CAPEX/OPEX, status, approvals and turnaround time'],
-  update:['Update & share','Refresh the dashboard and put it online for the team']};
+  issues:['Issues & requests','HQ and site issues \u2014 CAPEX/OPEX, status, approvals and turnaround time']};
 
 PG.payments=function(w){
   const rows=DS.payments.rows;
@@ -1200,74 +1197,6 @@ PG.sop=function(w){
   w.innerHTML='<div class="card" style="padding:0;overflow:hidden"><iframe src="docs/facility-sop.pdf" style="width:100%;height:85vh;border:none;display:block" title="Facility Management SOP"></iframe></div>'
     + '<div class="cap" style="margin-top:10px">If the preview does not load, <a href="docs/facility-sop.pdf" target="_blank" rel="noopener">open the PDF in a new tab</a>.</div>';
 };
-PG.update=function(w){
-  w.innerHTML=`<div class="tabsw" id="methodTabs">
-    <button class="mtab on" data-m="file">\u2912 Upload a file</button>
-    <button class="mtab" data-m="link">\ud83d\udd17 Link to the sheet</button>
-    <button class="mtab" data-m="share">\u2197 Share online</button></div>
-  <div class="mpanel on" data-m="file"><div class="grid g13">
-    <div class="card"><h3>Refresh from a downloaded file</h3><p class="cap">The reliable method. Download the latest workbook, drop it here \u2014 everything recalculates instantly and is saved to the link so everyone sees it.</p>
-      <div class="drop" id="drop"><div style="font-size:34px">\u2912</div><div class="big">Drop your .xlsx here</div><div class="sm">or click to choose a file \u00b7 processed in your browser</div><input type="file" id="file" accept=".xlsx,.xlsm" style="display:none"></div>
-      <div id="uStatus"></div>
-      <div id="saveState" class="note" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"></div></div>
-    <div class="card"><h3>Steps</h3><ol class="steps">
-      <li>In Excel Online, open the workbook and choose <b>File \u2192 Download a copy</b>.</li>
-      <li>Drop that file in the box on the left.</li>
-      <li>Every chart and table redraws from the new numbers.</li>
-      <li>Keep tab names and columns unchanged so the mapping keeps working.</li></ol></div></div></div>
-  <div class="mpanel" data-m="link"><div class="grid g13">
-    <div class="card"><h3>Load straight from the sheet link</h3><p class="cap">Paste your SharePoint / OneDrive link. The dashboard will try to pull the file and refresh on its own.</p>
-      <div class="linkrow"><input type="text" id="urlIn" class="urlin" placeholder="https://karmsolaregypt-my.sharepoint.com/:x:/g/personal/\u2026"/><button class="btn solar" id="loadUrl">Load now</button></div>
-      <div class="autorow"><label class="switch"><input type="checkbox" id="autoChk"><span class="track"></span></label><span>Auto-refresh every</span>
-        <select id="autoMin" class="sel"><option value="5">5 min</option><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">60 min</option></select><span id="autoState" class="autostate">off</span></div>
-      <div id="lStatus" style="margin-top:14px;font-size:13px"></div></div>
-    <div class="card"><h3>Will the link work?</h3><p class="cap" style="margin-bottom:10px">Browsers only let a page fetch a file when it's allowed to. So this works when:</p>
-      <ul class="chk"><li class="y">The link is shared as <b>"Anyone with the link"</b> with download allowed, or</li>
-        <li class="y">This dashboard is <b>hosted inside your KarmSolar SharePoint</b>, so your sign-in carries over.</li>
-        <li class="n">A normal company link that asks people to <b>sign in</b> will be blocked by the browser \u2014 use Upload instead.</li></ul>
-      <div class="note" style="margin-top:14px">For guaranteed hands-off live refresh, connect the file in <b>Power BI</b> with a scheduled refresh.</div></div></div></div>
-  <div class="mpanel" data-m="share"><div class="grid g13">
-    <div class="card"><h3>Put the dashboard online \u2014 no Claude account needed</h3>
-      <p class="cap">Anyone you give the link to can open this dashboard straight in their browser \u2014 no sign-in, no Claude account, nothing to install. When you upload a new sheet or edit values here, they're saved to the shared link, so everyone who opens it sees your latest numbers automatically. The only thing that needs re-publishing is a change to the dashboard's design or charts.</p>
-      <p class="cap" style="margin-top:4px">To make it fully independent of Claude, click <b>\u11015 Save dashboard</b> in the top bar \u2014 it downloads one self-contained <b>.html</b> file with the current numbers baked in. Host that file anywhere below; updating later is just re-uploading the file to the same place (it overwrites the old link):</p>
-      <div class="host">
-        <div><b>SharePoint / OneDrive&nbsp;</b>\u2014 upload <b>KarmSolar-Admin-Dashboard.html</b> to a document library, then use that file's share link. Best fit since the team already lives here.</div>
-        <div><b>Microsoft Teams&nbsp;</b>\u2014 add the file to a channel's Files tab, or pin it as a website tab.</div>
-        <div><b>Netlify Drop&nbsp;</b>\u2014 drag the file onto app.netlify.com/drop for an instant public link.</div>
-        <div><b>Google Drive&nbsp;</b>\u2014 upload, set "Anyone with the link", open with a preview-HTML add-on.</div>
-      </div>
-      <div class="note" style="margin-top:14px">Whoever opens the link sees the latest numbers, and can use Edit, Upload and the link loader themselves \u2014 without any account.</div></div>
-    <div class="card"><h3>Editing & saving</h3><ol class="steps">
-      <li>Click <b>\u270e Edit</b> in the top bar to turn on inline editing.</li>
-      <li>Change any highlighted value \u2014 units, quantities, rents, paid status \u2014 charts update live.</li>
-      <li>Click <b>\u2912 Excel</b> to download your edited data as a workbook.</li>
-      <li>Re-upload that workbook (or keep it) so the edits stay next time.</li></ol>
-      <div class="note" style="margin-top:14px">Edits are saved to the shared link automatically. Export to Excel any time to keep a permanent copy of the numbers.</div></div></div></div>`;
-  w.querySelectorAll('.mtab').forEach(b=>b.onclick=()=>{ w.querySelectorAll('.mtab').forEach(x=>x.classList.toggle('on',x===b)); w.querySelectorAll('.mpanel').forEach(p=>p.classList.toggle('on',p.dataset.m===b.dataset.m)); });
-  const drop=w.querySelector('#drop'),file=w.querySelector('#file'),st=w.querySelector('#uStatus');
-  (function(){ const sv=w.querySelector('#saveState');
-    const shared=(STORE_MODE==='shared');
-    const scope=shared?'on the shared link \u2014 everyone who opens it sees the same data':'in this browser only';
-    sv.innerHTML='<span style="color:var(--muted)">Checking saved data\u2026</span>';
-    storeGet().then(s=>{
-      if(s&&s.ds){ sv.innerHTML='<span style="color:var(--ink-soft)">\u2713 Showing <b>'+esc(s.label||'your data')+'</b>, saved '+new Date(s.ts).toLocaleString()+' '+scope+'. It reloads automatically.</span>'
-          +'<button class="btn" id="resetData">\u21ba Reset to sample data</button>';
-        const rb=w.querySelector('#resetData'); rb.onclick=()=>{ if(confirm(shared?'Reset the shared data back to the original sample for everyone?':'Forget the saved upload and go back to the original sample data?')) resetToEmbedded(); };
-      } else { sv.innerHTML='<span style="color:var(--muted)">No saved upload yet \u2014 once you drop a sheet here it is saved '+scope+' and reloads automatically next time.</span>'; }
-    });
-  })();
-  drop.onclick=()=>file.click();
-  ['dragover','dragenter'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('hot');}));
-  ['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('hot');}));
-  drop.addEventListener('drop',ev=>{ if(ev.dataTransfer.files[0]) handleFile(ev.dataTransfer.files[0],st); });
-  file.onchange=()=>{ if(file.files[0]) handleFile(file.files[0],st); };
-  const urlIn=w.querySelector('#urlIn'),lst=w.querySelector('#lStatus'); if(LINK.url)urlIn.value=LINK.url;
-  w.querySelector('#loadUrl').onclick=()=>{ const u=urlIn.value.trim(); if(!u){lst.innerHTML='<span class="dot" style="background:var(--red)"></span>Paste a link first.';return;} LINK.url=u; loadFromUrl(u,lst); };
-  const chk=w.querySelector('#autoChk'),selM=w.querySelector('#autoMin'),stE=w.querySelector('#autoState');
-  chk.checked=LINK.auto; selM.value=String(LINK.everyMin); stE.textContent=LINK.auto?('on \u00b7 every '+LINK.everyMin+' min'):'off';
-  function apply(){ LINK.auto=chk.checked; LINK.everyMin=+selM.value; setAuto(lst); stE.textContent=LINK.auto?('on \u00b7 every '+LINK.everyMin+' min'):'off'; }
-  chk.onchange=()=>{ if(chk.checked&&!LINK.url){chk.checked=false;lst.innerHTML='<span class="dot" style="background:var(--red)"></span>Load a link successfully first, then turn on auto-refresh.';return;} apply(); };
-  selM.onchange=()=>{ if(LINK.auto) apply(); }; };
 
 /* ---------- upload parsing ---------- */
 const SPEC={
@@ -2099,8 +2028,7 @@ const PAGE_META={
   issues:['HQ Issues & requests','Facilities requests and their status'],
   procurement:['Procurement Benchmark','Executive procurement benchmarking report'],
   assetguide:['Asset Reference Guide','Facility asset reference guide (V13.5.10)'],
-  sop:['Facility SOP','Karm Egypt facility management process standards'],
-  update:['Update & share','Refresh the dashboard and put it online for the team']
+  sop:['Facility SOP','Karm Egypt facility management process standards']
 };
 function show(pg){
   if(!PG[pg]) pg='payments';
@@ -2130,8 +2058,6 @@ const exportBtnEl=document.getElementById('exportBtn');
 if(exportBtnEl) exportBtnEl.onclick=exportXlsx;
 const dlBtnEl=document.getElementById('dlBtn');
 if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
-const goUpdateEl=document.getElementById('goUpdate');
-if(goUpdateEl) goUpdateEl.onclick=()=>show('update');
 
 /* ---------- boot ---------- */
 (async function bootDashboard(){
@@ -2142,9 +2068,8 @@ if(goUpdateEl) goUpdateEl.onclick=()=>show('update');
   // for a visitor who isn't you, a silent Graph attempt can succeed against
   // *their own* Microsoft account (if their device has one signed in) and
   // 404 looking for this file in their OneDrive — harmless, but pointless
-  // noise. The manual "Sign in & connect" / "Link to the sheet" / "Upload a
-  // file" options remain available in Update & share for anyone who wants
-  // to pull a fresher copy on demand between scheduled syncs.
+  // noise. Manual upload/link-load/share options have been removed from
+  // this dashboard so no one can overwrite the synced data by mistake.
   await restoreState();
   show('payments');
 })();
