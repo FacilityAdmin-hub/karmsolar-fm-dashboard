@@ -75,6 +75,41 @@ async function addRow(token, fields) {
   return ticketId;
 }
 
+// Best-effort: let the requester know their ticket was recorded, including the
+// ticket number and subject, so they have a reference for later. Same Graph
+// sendMail pattern used for status-change notifications in update-status.js.
+// A failed confirmation email should never fail the whole submission.
+async function sendConfirmationEmail(token, toEmail, toName, ticketId, title) {
+  if (!toEmail) return;
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
+  const subject = `Ticket submitted: ${ticketId}`;
+  const htmlBody = `<p>Hi ${toName || ''},</p>
+<p>Your request has been received and recorded.</p>
+<p><b>Ticket number:</b> ${ticketId}<br>
+<b>Subject:</b> ${title || ''}</p>
+<p>We'll email you again as its status changes. You can also check its status any time on the
+<a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">ticket board</a>.</p>`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: [{ emailAddress: { address: toEmail, name: toName || undefined } }],
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!res.ok) {
+      console.log('Confirmation email failed:', res.status, await res.text());
+    }
+  } catch (err) {
+    console.log('Confirmation email failed:', err.message);
+  }
+}
+
 async function closeIssue(ticketId, ok, errMsg) {
   if (!GITHUB_TOKEN || !REPO || !ISSUE_NUMBER) return;
   const commentUrl = `https://api.github.com/repos/${REPO}/issues/${ISSUE_NUMBER}/comments`;
@@ -115,6 +150,7 @@ async function main() {
   try {
     ticketId = await addRow(token, fields);
     console.log('Row added:', ticketId);
+    await sendConfirmationEmail(token, fields.requesterEmail, fields.requesterName, ticketId, fields.title);
     await closeIssue(ticketId, true, null);
   } catch (err) {
     console.error('Failed to add row:', err.message);
