@@ -12,6 +12,11 @@ const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
 const USER_UPN = process.env.GRAPH_USER_UPN || 'mohi.mohsen@karmsolar.com';
 const FILE_PATH = process.env.GRAPH_TICKETS_FILE_PATH || '/FM Tickets.xlsx';
 const BOARD_HTML_PATH = process.env.BOARD_HTML_PATH || path.join(__dirname, '..', 'ticket-board.html');
+// Admin & FM Dashboard (index.html) — HQ Issues & requests tab reads a
+// TICKET_ISSUES constant baked in here, same idea as EMBEDDED_TICKETS above.
+// Optional: if the file can't be found/patched, the ticket-board sync still
+// succeeds; only the dashboard-mirroring step is skipped.
+const DASHBOARD_HTML_PATH = process.env.DASHBOARD_HTML_PATH || path.join(__dirname, '..', 'index.html');
 
 const COLS = [
   'Ticket ID','Date Submitted','Title','Description','Category',
@@ -70,6 +75,54 @@ function extractTickets(buf) {
     rows.push(obj);
   }
   return rows;
+}
+
+// Maps the ticket board's 8-stage lifecycle onto the HQ Issues & requests
+// tab's 4-stage model, so tickets slot into the same status buckets used
+// for hand-added / sheet-imported requests there.
+const HQ_STATUS_MAP = {
+  'Backlog': 'Awaiting approval',
+  'Open': 'Awaiting approval',
+  'Waiting Approval': 'Awaiting approval',
+  'In Progress': 'In progress',
+  'In Review': 'In progress',
+  'Blocked': 'In progress',
+  'Resolved': 'Done',
+  'Closed': 'Done',
+};
+
+// Shapes the same ticket rows into the lightweight records index.html's
+// mergeTicketIssues() expects, so every ticket shows up in the HQ Issues &
+// requests tab alongside sheet-imported/hand-added requests. This is a
+// one-way mirror: index.html treats these as read-only, so a ticket's real
+// status (from the board) always wins on the next sync.
+function extractTicketIssues(tickets) {
+  return tickets.map(t => ({
+    ref: t['Ticket ID'],
+    title: t['Title'] || '',
+    category: t['Category'] || 'General',
+    loc: t['Site / Location'] || 'HQ',
+    rawStatus: t['Status'] || '',
+    status: HQ_STATUS_MAP[t['Status']] || 'Awaiting approval',
+    priority: t['Priority'] || '',
+    requesterName: t['Requester Name'] || '',
+    requesterEmail: t['Requester Email'] || '',
+    date: t['Date Submitted'] || '',
+  }));
+}
+
+function patchTicketIssues(htmlContent, ticketIssues) {
+  const marker = 'const TICKET_ISSUES = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) return null; // dashboard hasn't been updated to expect this yet — skip, don't fail the sync
+  const jsonStart = startIdx + marker.length;
+  const endMarker = '];\n';
+  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) return null;
+  const before = htmlContent.slice(0, jsonStart);
+  const after = htmlContent.slice(endIdx + 1);
+  const newJson = JSON.stringify(ticketIssues);
+  return before + newJson + after;
 }
 
 function excelSerialToStamp(v) {
@@ -164,9 +217,29 @@ async function main() {
   patched = patchSourceLabel(patched);
   fs.writeFileSync(BOARD_HTML_PATH, patched, 'utf-8');
   console.log('ticket-board.html updated with fresh data and current label.');
+
+  try {
+    if (fs.existsSync(DASHBOARD_HTML_PATH)) {
+      console.log('Mirroring tickets into', DASHBOARD_HTML_PATH, '(HQ Issues & requests tab)...');
+      const ticketIssues = extractTicketIssues(tickets);
+      const dashHtml = fs.readFileSync(DASHBOARD_HTML_PATH, 'utf-8');
+      const dashPatched = patchTicketIssues(dashHtml, ticketIssues);
+      if (dashPatched == null) {
+        console.log('index.html has no TICKET_ISSUES marker yet — skipping dashboard mirror (non-fatal).');
+      } else {
+        fs.writeFileSync(DASHBOARD_HTML_PATH, dashPatched, 'utf-8');
+        console.log('index.html updated with', ticketIssues.length, 'tickets for the HQ Issues & requests tab.');
+      }
+    } else {
+      console.log(DASHBOARD_HTML_PATH, 'not found — skipping dashboard mirror (non-fatal).');
+    }
+  } catch (err) {
+    // Never let a dashboard-mirroring problem fail the ticket-board sync itself.
+    console.log('Dashboard mirror step failed (non-fatal):', err.message);
+  }
 }
 
-module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, getAppToken, downloadWorkbook };
+module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, extractTicketIssues, patchTicketIssues, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
   main().catch(err => {
