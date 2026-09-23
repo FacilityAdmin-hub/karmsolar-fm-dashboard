@@ -1,4 +1,4 @@
-name: Sync dashboard from Microsoft Graph 
+name: Sync dashboard from Microsoft Graph
 
 on:
   schedule:
@@ -31,6 +31,7 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           INDEX_HTML_PATH: ${{ github.workspace }}/index.html
+          TICKET_BOARD_HTML_PATH: ${{ github.workspace }}/ticket-board.html
         run: node sync.js
 
       - name: Commit and push if changed
