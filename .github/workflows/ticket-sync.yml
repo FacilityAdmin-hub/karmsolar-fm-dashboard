@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ticket-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -24,7 +28,7 @@ jobs:
         working-directory: sync-script
         run: npm install --no-save xlsx
 
-      - name: Run ticket sync
+      - name: Sync tickets (5 passes, ~60s apart, for near 1-minute freshness)
         working-directory: sync-script
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -32,19 +36,25 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           BOARD_HTML_PATH: ${{ github.workspace }}/ticket-board.html
           DASHBOARD_HTML_PATH: ${{ github.workspace }}/index.html
-        run: node sync-tickets.js
-
-      - name: Commit and push if changed
         run: |
-          git config user.name "ticket-sync-bot"
-          git config user.email "actions@github.com"
-          if ! git diff --quiet -- ticket-board.html index.html; then
-            git add ticket-board.html index.html
-            git commit -m "Auto-sync ticket board data $(date -u +'%Y-%m-%d %H:%M UTC')"
-            for i in 1 2 3 4 5; do
-              git pull --rebase && git push && break
-              sleep 3
-            done
-          else
-            echo "No changes to ticket-board.html or index.html"
-          fi
+          git config --global user.name "ticket-sync-bot"
+          git config --global user.email "actions@github.com"
+          for i in 1 2 3 4 5; do
+            echo "=== Sync pass $i/5 ($(date -u +'%H:%M:%S UTC')) ==="
+            node sync-tickets.js
+            cd "$GITHUB_WORKSPACE"
+            if ! git diff --quiet -- ticket-board.html index.html; then
+              git add ticket-board.html index.html
+              git commit -m "Auto-sync ticket board data $(date -u +'%Y-%m-%d %H:%M UTC') (pass $i/5)"
+              for attempt in 1 2 3 4 5; do
+                git pull --rebase && git push && break
+                sleep 3
+              done
+            else
+              echo "No changes to ticket-board.html or index.html"
+            fi
+            cd "$GITHUB_WORKSPACE/sync-script"
+            if [ "$i" -lt 5 ]; then
+              sleep 55
+            fi
+          done
