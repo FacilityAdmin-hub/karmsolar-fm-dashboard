@@ -2,6 +2,14 @@
 // downloads FM Tickets.xlsx from Microsoft Graph, extracts the Tickets table,
 // and bakes it into ticket-board.html's EMBEDDED_TICKETS constant so every
 // visitor sees current data with zero sign-in — same pattern as index.html.
+//
+// NOTE: this script used to also mirror tickets straight into index.html's
+// TICKET_ISSUES constant. That was removed — sync.js (the "Sync dashboard from
+// Microsoft Graph" workflow) now owns index.html exclusively and reads the
+// EMBEDDED_TICKETS this script writes below to do that mirroring itself. Two
+// workflows writing index.html independently raced: sync.js runs on a very
+// frequent external trigger and resolves push conflicts with `-X ours`, so it
+// was silently discarding whatever ticket data this script had just committed.
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
@@ -12,11 +20,6 @@ const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
 const USER_UPN = process.env.GRAPH_USER_UPN || 'mohi.mohsen@karmsolar.com';
 const FILE_PATH = process.env.GRAPH_TICKETS_FILE_PATH || '/FM Tickets.xlsx';
 const BOARD_HTML_PATH = process.env.BOARD_HTML_PATH || path.join(__dirname, '..', 'ticket-board.html');
-// Admin & FM Dashboard (index.html) — HQ Issues & requests tab reads a
-// TICKET_ISSUES constant baked in here, same idea as EMBEDDED_TICKETS above.
-// Optional: if the file can't be found/patched, the ticket-board sync still
-// succeeds; only the dashboard-mirroring step is skipped.
-const DASHBOARD_HTML_PATH = process.env.DASHBOARD_HTML_PATH || path.join(__dirname, '..', 'index.html');
 
 const COLS = [
   'Ticket ID','Date Submitted','Title','Description','Category',
@@ -77,51 +80,31 @@ function extractTickets(buf) {
   return rows;
 }
 
-// Maps the ticket board's 8-stage lifecycle onto the HQ Issues & requests
-// tab's 4-stage model, so tickets slot into the same status buckets used
-// for hand-added / sheet-imported requests there.
-const HQ_STATUS_MAP = {
-  'Backlog': 'Awaiting approval',
-  'Open': 'Awaiting approval',
-  'Waiting Approval': 'Awaiting approval',
-  'In Progress': 'In progress',
-  'In Review': 'In progress',
-  'Blocked': 'In progress',
-  'Resolved': 'Done',
-  'Closed': 'Done',
-};
-
-// Shapes the same ticket rows into the lightweight records index.html's
-// mergeTicketIssues() expects, so every ticket shows up in the HQ Issues &
-// requests tab alongside sheet-imported/hand-added requests. This is a
-// one-way mirror: index.html treats these as read-only, so a ticket's real
-// status (from the board) always wins on the next sync.
-function extractTicketIssues(tickets) {
-  return tickets.map(t => ({
-    ref: t['Ticket ID'],
-    title: t['Title'] || '',
-    category: t['Category'] || 'General',
-    loc: t['Site / Location'] || 'HQ',
-    rawStatus: t['Status'] || '',
-    status: HQ_STATUS_MAP[t['Status']] || 'Awaiting approval',
-    priority: t['Priority'] || '',
-    requesterName: t['Requester Name'] || '',
-    requesterEmail: t['Requester Email'] || '',
-    date: t['Date Submitted'] || '',
-  }));
-}
-
-function patchTicketIssues(htmlContent, ticketIssues) {
-  const marker = 'const TICKET_ISSUES = ';
+function patchEmbedded(htmlContent, tickets) {
+  const marker = 'const EMBEDDED_TICKETS = ';
   const startIdx = htmlContent.indexOf(marker);
-  if (startIdx < 0) return null; // dashboard hasn't been updated to expect this yet — skip, don't fail the sync
+  if (startIdx < 0) throw new Error('Could not find "const EMBEDDED_TICKETS = " in ticket-board.html — has the file structure changed?');
   const jsonStart = startIdx + marker.length;
   const endMarker = '];\n';
   const endIdx = htmlContent.indexOf(endMarker, jsonStart);
-  if (endIdx < 0) return null;
+  if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED_TICKETS array in ticket-board.html');
   const before = htmlContent.slice(0, jsonStart);
-  const after = htmlContent.slice(endIdx + 1);
-  const newJson = JSON.stringify(ticketIssues);
+  const after = htmlContent.slice(endIdx + 1); // "]" consumed by JSON.stringify, keep ";\n" + rest
+  const newJson = JSON.stringify(tickets);
+  return before + newJson + after;
+}
+
+function patchEmbeddedComments(htmlContent, commentsByTicket) {
+  const marker = 'const EMBEDDED_COMMENTS = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) throw new Error('Could not find "const EMBEDDED_COMMENTS = " in ticket-board.html — has the file structure changed?');
+  const jsonStart = startIdx + marker.length;
+  const endMarker = '};\n';
+  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED_COMMENTS object in ticket-board.html');
+  const before = htmlContent.slice(0, jsonStart);
+  const after = htmlContent.slice(endIdx + 1); // "}" consumed by JSON.stringify, keep ";\n" + rest
+  const newJson = JSON.stringify(commentsByTicket);
   return before + newJson + after;
 }
 
@@ -160,39 +143,11 @@ function extractComments(buf) {
   return grouped;
 }
 
-function patchEmbedded(htmlContent, tickets) {
-  const marker = 'const EMBEDDED_TICKETS = ';
-  const startIdx = htmlContent.indexOf(marker);
-  if (startIdx < 0) throw new Error('Could not find "const EMBEDDED_TICKETS = " in ticket-board.html — has the file structure changed?');
-  const jsonStart = startIdx + marker.length;
-  const endMarker = '];\n';
-  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
-  if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED_TICKETS array in ticket-board.html');
-  const before = htmlContent.slice(0, jsonStart);
-  const after = htmlContent.slice(endIdx + 1); // "]" consumed by JSON.stringify, keep ";\n" + rest
-  const newJson = JSON.stringify(tickets);
-  return before + newJson + after;
-}
-
-function patchEmbeddedComments(htmlContent, commentsByTicket) {
-  const marker = 'const EMBEDDED_COMMENTS = ';
-  const startIdx = htmlContent.indexOf(marker);
-  if (startIdx < 0) throw new Error('Could not find "const EMBEDDED_COMMENTS = " in ticket-board.html — has the file structure changed?');
-  const jsonStart = startIdx + marker.length;
-  const endMarker = '};\n';
-  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
-  if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED_COMMENTS object in ticket-board.html');
-  const before = htmlContent.slice(0, jsonStart);
-  const after = htmlContent.slice(endIdx + 1); // "}" consumed by JSON.stringify, keep ";\n" + rest
-  const newJson = JSON.stringify(commentsByTicket);
-  return before + newJson + after;
-}
-
 function patchSourceLabel(htmlContent) {
   const re = /(<span id="syncLabel">)[^<]*(<\/span>)/;
   if (!re.test(htmlContent)) throw new Error('Could not find <span id="syncLabel"> in ticket-board.html — has the file structure changed?');
   const stamp = new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC';
-  const label = `Auto-synced \u00b7 ${stamp}`;
+  const label = `Auto-synced · ${stamp}`;
   return htmlContent.replace(re, `$1${label}$2`);
 }
 
@@ -217,29 +172,9 @@ async function main() {
   patched = patchSourceLabel(patched);
   fs.writeFileSync(BOARD_HTML_PATH, patched, 'utf-8');
   console.log('ticket-board.html updated with fresh data and current label.');
-
-  try {
-    if (fs.existsSync(DASHBOARD_HTML_PATH)) {
-      console.log('Mirroring tickets into', DASHBOARD_HTML_PATH, '(HQ Issues & requests tab)...');
-      const ticketIssues = extractTicketIssues(tickets);
-      const dashHtml = fs.readFileSync(DASHBOARD_HTML_PATH, 'utf-8');
-      const dashPatched = patchTicketIssues(dashHtml, ticketIssues);
-      if (dashPatched == null) {
-        console.log('index.html has no TICKET_ISSUES marker yet — skipping dashboard mirror (non-fatal).');
-      } else {
-        fs.writeFileSync(DASHBOARD_HTML_PATH, dashPatched, 'utf-8');
-        console.log('index.html updated with', ticketIssues.length, 'tickets for the HQ Issues & requests tab.');
-      }
-    } else {
-      console.log(DASHBOARD_HTML_PATH, 'not found — skipping dashboard mirror (non-fatal).');
-    }
-  } catch (err) {
-    // Never let a dashboard-mirroring problem fail the ticket-board sync itself.
-    console.log('Dashboard mirror step failed (non-fatal):', err.message);
-  }
 }
 
-module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, extractTicketIssues, patchTicketIssues, getAppToken, downloadWorkbook };
+module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
   main().catch(err => {
