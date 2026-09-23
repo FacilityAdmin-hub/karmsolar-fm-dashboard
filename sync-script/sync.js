@@ -12,6 +12,16 @@ const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
 const USER_UPN = process.env.GRAPH_USER_UPN || 'mohi.mohsen@karmsolar.com';
 const FILE_PATH = process.env.GRAPH_FILE_PATH || '/Main dashboard/FM Dashboard.xlsx';
 const INDEX_HTML_PATH = process.env.INDEX_HTML_PATH || path.join(__dirname, '..', 'index.html');
+// index.html's HQ Issues & requests tab also mirrors the ticket board (a separate
+// workbook/workflow — see sync-tickets.js). Both this workflow and ticket-sync.yml
+// used to write index.html independently, which raced: this workflow runs on a very
+// frequent external trigger and resolves push conflicts with `-X ours`, so whenever
+// it collided with a ticket-board update it silently discarded the newer ticket data.
+// Fix: index.html has exactly one writer (this script). It reads the ticket board's
+// already-committed EMBEDDED_TICKETS straight out of the checked-out ticket-board.html
+// (no extra Graph call needed) and mirrors it into TICKET_ISSUES itself, in the same
+// commit as everything else.
+const TICKET_BOARD_HTML_PATH = process.env.TICKET_BOARD_HTML_PATH || path.join(__dirname, '..', 'ticket-board.html');
 
 async function getAppToken() {
   const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
@@ -66,7 +76,7 @@ function patchSourceLabel(htmlContent) {
   const re = /(<b id="srcName">)[^<]*(<\/b>)/;
   if (!re.test(htmlContent)) throw new Error('Could not find <b id="srcName"> in index.html — has the file structure changed?');
   const stamp = new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC';
-  const label = `Live workbook (auto-synced) \u00b7 ${stamp}`;
+  const label = `Live workbook (auto-synced) · ${stamp}`;
   return htmlContent.replace(re, `$1${label}$2`);
 }
 
@@ -108,6 +118,69 @@ function patchIssues(htmlContent, issues) {
   return before + JSON.stringify(issues) + after;
 }
 
+// Maps the ticket board's 8-stage lifecycle onto the HQ Issues & requests
+// tab's 4-stage model, so tickets slot into the same status buckets used
+// for hand-added / sheet-imported requests there. Kept identical to the
+// mapping in sync-tickets.js.
+const HQ_STATUS_MAP = {
+  'Backlog': 'Awaiting approval',
+  'Open': 'Awaiting approval',
+  'Waiting Approval': 'Awaiting approval',
+  'In Progress': 'In progress',
+  'In Review': 'In progress',
+  'Blocked': 'In progress',
+  'Resolved': 'Done',
+  'Closed': 'Done',
+};
+
+// Reads the ticket board's already-committed EMBEDDED_TICKETS straight out of the
+// checked-out ticket-board.html and reshapes it into the lightweight records
+// index.html's mergeTicketIssues() expects. Returns null (never throws) if the file
+// or marker isn't there yet, so a ticket-board hiccup never fails the dashboard sync.
+function readTicketIssuesFromBoard(boardHtmlPath) {
+  if (!fs.existsSync(boardHtmlPath)) return null;
+  const html = fs.readFileSync(boardHtmlPath, 'utf-8');
+  const marker = 'const EMBEDDED_TICKETS = ';
+  const startIdx = html.indexOf(marker);
+  if (startIdx < 0) return null;
+  const jsonStart = startIdx + marker.length;
+  const endMarker = '];\n';
+  const endIdx = html.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) return null;
+  let tickets;
+  try {
+    tickets = JSON.parse(html.slice(jsonStart, endIdx + 1));
+  } catch (e) {
+    return null;
+  }
+  return tickets.map(t => ({
+    ref: t['Ticket ID'],
+    title: t['Title'] || '',
+    category: t['Category'] || 'General',
+    loc: t['Site / Location'] || 'HQ',
+    rawStatus: t['Status'] || '',
+    status: HQ_STATUS_MAP[t['Status']] || 'Awaiting approval',
+    priority: t['Priority'] || '',
+    requesterName: t['Requester Name'] || '',
+    requesterEmail: t['Requester Email'] || '',
+    date: t['Date Submitted'] || '',
+  }));
+}
+
+function patchTicketIssues(htmlContent, ticketIssues) {
+  const marker = 'const TICKET_ISSUES = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) return null; // dashboard hasn't been updated to expect this yet — skip, don't fail the sync
+  const jsonStart = startIdx + marker.length;
+  const endMarker = '];\n';
+  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) return null;
+  const before = htmlContent.slice(0, jsonStart);
+  const after = htmlContent.slice(endIdx + 1);
+  const newJson = JSON.stringify(ticketIssues);
+  return before + newJson + after;
+}
+
 async function main() {
   if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
     throw new Error('Missing AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET environment variables.');
@@ -127,11 +200,30 @@ async function main() {
   let patched = patchIndexHtml(html, DS);
   patched = patchSourceLabel(patched);
   patched = patchIssues(patched, issues);
+
+  try {
+    const ticketIssues = readTicketIssuesFromBoard(TICKET_BOARD_HTML_PATH);
+    if (ticketIssues == null) {
+      console.log('No ticket-board.html / EMBEDDED_TICKETS found yet — skipping ticket mirror (non-fatal).');
+    } else {
+      const withTickets = patchTicketIssues(patched, ticketIssues);
+      if (withTickets == null) {
+        console.log('index.html has no TICKET_ISSUES marker — skipping ticket mirror (non-fatal).');
+      } else {
+        patched = withTickets;
+        console.log('Mirrored', ticketIssues.length, 'tickets into TICKET_ISSUES (HQ Issues & requests tab).');
+      }
+    }
+  } catch (err) {
+    // Never let a ticket-mirroring problem fail the main dashboard sync.
+    console.log('Ticket mirror step failed (non-fatal):', err.message);
+  }
+
   fs.writeFileSync(INDEX_HTML_PATH, patched, 'utf-8');
-  console.log('index.html updated with fresh data, issues, and current label.');
+  console.log('index.html updated with fresh data, issues, tickets, and current label.');
 }
 
-module.exports = { patchIndexHtml, patchSourceLabel, patchIssues, getAppToken, downloadWorkbook };
+module.exports = { patchIndexHtml, patchSourceLabel, patchIssues, readTicketIssuesFromBoard, patchTicketIssues, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
   main().catch(err => {
