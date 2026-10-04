@@ -80,6 +80,40 @@ async function sendNotificationEmail(token, toEmail, toName, subject, htmlBody) 
   }
 }
 
+// FM team members who get an internal copy of every ticket event (new ticket,
+// status change, new comment). Override with a comma-separated NOTIFY_EMAILS env var.
+const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || 'mostafa.abuelmagd@karmsolar.com,hussien.magdy@karmsolar.com,mohi.mohsen@karmsolar.com')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Best-effort internal notification to the FM team. Never fails the status update.
+async function sendTeamEmail(token, subject, htmlBody, excludeEmail) {
+  const skip = String(excludeEmail || '').toLowerCase();
+  const to = NOTIFY_EMAILS.filter(e => e.toLowerCase() !== skip);
+  if (!to.length) return;
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: to.map(address => ({ emailAddress: { address } })),
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!res.ok) console.log('Team email failed:', res.status, await res.text());
+  } catch (err) {
+    console.log('Team email failed:', err.message);
+  }
+}
+
 async function updateStatusCell(token, driveId, itemId, index, status) {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 16).replace('T', ' ');
@@ -175,6 +209,17 @@ async function main() {
       token, requesterEmail, requesterName,
       `Status updated: ${title}`,
       `<p>Hi ${requesterName || ''},</p><p>Your ticket <b>${ticketId} — ${title}</b> status changed to <b>${status}</b>.</p>`
+    );
+    await sendTeamEmail(
+      token,
+      `Ticket status updated: ${ticketId} → ${status}`,
+      `<p>A ticket's status was changed.</p>
+<p><b>Ticket number:</b> ${esc(ticketId)}<br>
+<b>Subject:</b> ${esc(title)}<br>
+<b>New status:</b> ${esc(status)}<br>
+<b>Requester:</b> ${esc(requesterName)} ${requesterEmail ? '(' + esc(requesterEmail) + ')' : ''}</p>
+<p><a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">Open the ticket board</a></p>`,
+      requesterEmail
     );
     await closeIssue(ticketId, true, null);
   } catch (err) {
