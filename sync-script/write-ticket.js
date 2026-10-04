@@ -75,6 +75,40 @@ async function addRow(token, fields) {
   return ticketId;
 }
 
+// FM team members who get an internal copy of every ticket event (new ticket,
+// status change, new comment). Override with a comma-separated NOTIFY_EMAILS env var.
+const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || 'mostafa.abuelmagd@karmsolar.com,hussien.magdy@karmsolar.com,mohi.mohsen@karmsolar.com')
+  .split(',').map(s => s.trim()).filter(Boolean);
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Best-effort internal notification to the FM team. Never fails the submission.
+async function sendTeamEmail(token, subject, htmlBody, excludeEmail) {
+  const skip = String(excludeEmail || '').toLowerCase();
+  const to = NOTIFY_EMAILS.filter(e => e.toLowerCase() !== skip);
+  if (!to.length) return;
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: to.map(address => ({ emailAddress: { address } })),
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!res.ok) console.log('Team email failed:', res.status, await res.text());
+  } catch (err) {
+    console.log('Team email failed:', err.message);
+  }
+}
+
 // Best-effort: let the requester know their ticket was recorded, including the
 // ticket number and subject, so they have a reference for later. Same Graph
 // sendMail pattern used for status-change notifications in update-status.js.
@@ -151,6 +185,20 @@ async function main() {
     ticketId = await addRow(token, fields);
     console.log('Row added:', ticketId);
     await sendConfirmationEmail(token, fields.requesterEmail, fields.requesterName, ticketId, fields.title);
+    await sendTeamEmail(
+      token,
+      `New ticket: ${ticketId} — ${fields.title || ''}`,
+      `<p>A new ticket was submitted.</p>
+<p><b>Ticket number:</b> ${esc(ticketId)}<br>
+<b>Subject:</b> ${esc(fields.title)}<br>
+<b>Category:</b> ${esc(fields.category)}<br>
+<b>Priority:</b> ${esc(fields.priority)}<br>
+<b>Site / Location:</b> ${esc(fields.site)}<br>
+<b>Requester:</b> ${esc(fields.requesterName)} ${fields.requesterEmail ? '(' + esc(fields.requesterEmail) + ')' : ''}</p>
+<p><b>Description:</b><br>${esc(fields.description).replace(/\n/g, '<br>')}</p>
+<p><a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">Open the ticket board</a></p>`,
+      fields.requesterEmail
+    );
     await closeIssue(ticketId, true, null);
   } catch (err) {
     console.error('Failed to add row:', err.message);
