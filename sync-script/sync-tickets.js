@@ -151,6 +151,100 @@ function patchSourceLabel(htmlContent) {
   return htmlContent.replace(re, `$1${label}$2`);
 }
 
+// ---- New-comment notifications -------------------------------------------------
+// Comments are posted through the Cloudflare Worker straight into the "Comments"
+// sheet of FM Tickets.xlsx. Each sync run compares that sheet against the comments
+// already baked into ticket-board.html; anything not there yet is a NEW comment (or
+// attachment) and is emailed to the FM team. Status-change rows are skipped because
+// update-status.js already emails those. This also catches comments typed directly
+// into Excel. Override recipients with a comma-separated NOTIFY_EMAILS env var.
+const NOTIFY_EMAILS = (process.env.NOTIFY_EMAILS || 'mostafa.abuelmagd@karmsolar.com,hussien.magdy@karmsolar.com,mohi.mohsen@karmsolar.com')
+  .split(',').map(s => s.trim()).filter(Boolean);
+const MAX_COMMENT_EMAILS_PER_RUN = 10;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function readExistingComments(htmlContent) {
+  const marker = 'const EMBEDDED_COMMENTS = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) return null;
+  const jsonStart = startIdx + marker.length;
+  const endIdx = htmlContent.indexOf('};\n', jsonStart);
+  if (endIdx < 0) return null;
+  try { return JSON.parse(htmlContent.slice(jsonStart, endIdx + 1)); } catch (e) { return null; }
+}
+
+function commentKey(c) {
+  return [c['Ticket ID'], c['Timestamp'], c['Author'], c['Type'], c['Content'], c['AttachmentURL']].join('|');
+}
+
+function findNewComments(oldComments, newComments) {
+  // No readable baseline means we can't tell old from new — never risk a flood.
+  if (!oldComments) return [];
+  const seen = new Set();
+  Object.values(oldComments).forEach(arr => (arr || []).forEach(c => seen.add(commentKey(c))));
+  const fresh = [];
+  Object.values(newComments).forEach(arr => (arr || []).forEach(c => {
+    if (c['Type'] === 'Status') return;
+    if (!seen.has(commentKey(c))) fresh.push(c);
+  }));
+  return fresh;
+}
+
+async function sendTeamEmail(token, subject, htmlBody) {
+  if (!NOTIFY_EMAILS.length) return;
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          subject,
+          body: { contentType: 'HTML', content: htmlBody },
+          toRecipients: NOTIFY_EMAILS.map(address => ({ emailAddress: { address } })),
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!res.ok) console.log('Comment email failed:', res.status, await res.text());
+  } catch (err) {
+    console.log('Comment email failed:', err.message);
+  }
+}
+
+async function notifyNewComments(token, freshComments, tickets) {
+  const titleById = {};
+  tickets.forEach(t => { titleById[t['Ticket ID']] = t['Title']; });
+  const batch = freshComments.slice(0, MAX_COMMENT_EMAILS_PER_RUN);
+  for (const c of batch) {
+    const id = c['Ticket ID'];
+    const isAttachment = c['Type'] !== 'Comment' && c['AttachmentURL'];
+    const what = isAttachment ? 'New attachment' : 'New comment';
+    const body = isAttachment
+      ? `<p><a href="${esc(c['AttachmentURL'])}">${esc(c['Content'] || 'View attachment')}</a></p>`
+      : `<p>${esc(c['Content']).replace(/\n/g, '<br>')}</p>`;
+    await sendTeamEmail(
+      token,
+      `${what} on ${id}${titleById[id] ? ' — ' + titleById[id] : ''}`,
+      `<p><b>${esc(c['Author'] || 'Someone')}</b> added ${isAttachment ? 'an attachment' : 'a comment'} on ticket
+<b>${esc(id)}</b>${titleById[id] ? ' (' + esc(titleById[id]) + ')' : ''} at ${esc(c['Timestamp'])}.</p>
+${body}
+<p><a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">Open the ticket board</a></p>`
+    );
+  }
+  if (freshComments.length > batch.length) {
+    await sendTeamEmail(
+      token,
+      `${freshComments.length - batch.length} more new ticket comments`,
+      `<p>${freshComments.length - batch.length} additional new comments/attachments arrived in the same sync and were not emailed individually. See the
+<a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">ticket board</a>.</p>`
+    );
+  }
+}
+
 async function main() {
   if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
     throw new Error('Missing AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET environment variables.');
@@ -167,14 +261,29 @@ async function main() {
 
   console.log('Reading', BOARD_HTML_PATH, '...');
   const html = fs.readFileSync(BOARD_HTML_PATH, 'utf-8');
+  const previousComments = readExistingComments(html);
   let patched = patchEmbedded(html, tickets);
   patched = patchEmbeddedComments(patched, comments);
   patched = patchSourceLabel(patched);
   fs.writeFileSync(BOARD_HTML_PATH, patched, 'utf-8');
   console.log('ticket-board.html updated with fresh data and current label.');
+
+  // Email the FM team about comments/attachments that weren't in the previous snapshot.
+  // Runs after the board file is written; never fails the sync itself.
+  try {
+    const fresh = findNewComments(previousComments, comments);
+    if (fresh.length) {
+      console.log('Found', fresh.length, 'new comment(s)/attachment(s) — emailing the team...');
+      await notifyNewComments(token, fresh, tickets);
+    } else {
+      console.log('No new comments.');
+    }
+  } catch (err) {
+    console.log('New-comment notification step failed (non-fatal):', err.message);
+  }
 }
 
-module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, getAppToken, downloadWorkbook };
+module.exports = { patchEmbedded, patchEmbeddedComments, extractComments, patchSourceLabel, extractTickets, getAppToken, downloadWorkbook, readExistingComments, findNewComments };
 
 if (require.main === module) {
   main().catch(err => {
