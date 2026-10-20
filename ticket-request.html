@@ -163,7 +163,7 @@ function showSignInProblem(message) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.textContent = 'Sign in with Microsoft';
-  btn.onclick = () => msalInstance.loginRedirect({ scopes: SIGNIN_SCOPES });
+  btn.onclick = () => msalInstance.loginRedirect({ scopes: SIGNIN_SCOPES, prompt: 'login' });
   authBox.appendChild(btn);
 }
 
@@ -179,7 +179,7 @@ async function startSignIn() {
     if (Date.now() - last < 60000) { showSignInProblem('Sign-in was not completed.'); return; }
     sessionStorage.setItem('signinTried', String(Date.now()));
     authBox.textContent = 'Redirecting to Microsoft sign-in…';
-    await msalInstance.loginRedirect({ scopes: SIGNIN_SCOPES });
+    await msalInstance.loginRedirect({ scopes: SIGNIN_SCOPES, prompt: 'login' });
   } catch (err) {
     console.error(err);
     showSignInProblem('Could not sign you in.');
