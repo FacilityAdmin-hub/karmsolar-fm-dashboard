@@ -22,6 +22,11 @@
   label{display:block;font-size:.85rem;font-weight:bold;margin:16px 0 6px;color:var(--navy);}
   input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-family:inherit;font-size:.95rem;background:#fff;}
   textarea{min-height:100px;resize:vertical;}
+  input[readonly]{background:#eef2f1;color:var(--muted);cursor:not-allowed;}
+  .hint{font-size:.74rem;color:var(--muted);margin-top:5px;}
+  .authBox{margin-bottom:6px;padding:12px 14px;border-radius:8px;background:#eef4fb;border:1px solid #cddff3;color:var(--navy);font-size:.88rem;}
+  .authBox.error{background:#fdecea;border-color:#f3c3be;color:var(--danger);}
+  .authBox button{margin-left:8px;padding:6px 12px;border:none;border-radius:6px;background:var(--green);color:#fff;font-weight:bold;cursor:pointer;}
   .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
   button.submit{margin-top:22px;width:100%;padding:14px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:1rem;font-weight:bold;cursor:pointer;}
   button.submit:disabled{background:#9fb8ac;cursor:not-allowed;}
@@ -41,6 +46,7 @@
 
 <div class="wrap">
   <div class="card">
+    <div class="authBox" id="authBox">Signing you in with your KarmSolar Microsoft account…</div>
     <form id="ticketForm">
       <label for="title">Request Title *</label>
       <input type="text" id="title" required maxlength="120" placeholder="e.g. AC not cooling – 2nd floor office">
@@ -86,17 +92,19 @@
         </div>
         <div>
           <label for="reqEmail">Your Email *</label>
-          <input type="email" id="reqEmail" required placeholder="you@karmsolar.com">
+          <input type="email" id="reqEmail" required readonly tabindex="-1" placeholder="Filled in automatically">
+          <div class="hint">Taken from your KarmSolar sign-in — it can't be edited.</div>
         </div>
       </div>
 
-      <button type="submit" class="submit" id="submitBtn">Submit Request</button>
+      <button type="submit" class="submit" id="submitBtn" disabled>Submit Request</button>
       <div class="msg success" id="successMsg">✅ Request submitted. It will appear on the FM team's board within a few minutes.</div>
     </form>
   </div>
   <footer>KarmSolar Facility Management &amp; Admin · Internal use only</footer>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js"></script>
 <script>
 // No secret lives in this file. Submissions go to a small serverless proxy
 // (Cloudflare Worker) which privately holds the real GitHub token and
@@ -107,8 +115,81 @@ const PROXY_URL = "https://karmsolar-ticket-proxy.mohi-mohsen.workers.dev/";
 
 const form = document.getElementById('ticketForm');
 
+// ---- Who is submitting? ----
+// The requester's email is not typed in: it comes from their KarmSolar Microsoft
+// sign-in (Entra ID). Anyone already signed in to Microsoft 365 in their browser
+// passes straight through the redirect without typing anything. Only identity
+// scopes are requested — no access to files, mail or anything else. The client ID
+// and tenant ID are public identifiers, not secrets, and the tenant-specific
+// authority means only KarmSolar accounts can sign in.
+const REDIRECT_URI = "https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-request.html";
+const SIGNIN_SCOPES = ['openid', 'profile', 'email'];
+const msalInstance = new msal.PublicClientApplication({
+  auth: {
+    clientId: 'f298e7ee-dc78-4c73-816d-1947bebe1380',
+    authority: 'https://login.microsoftonline.com/739fefec-5106-43ec-910f-467d81bbc92c',
+    knownAuthorities: ['login.microsoftonline.com'],
+    redirectUri: REDIRECT_URI
+  },
+  cache: { cacheLocation: 'sessionStorage', storeAuthStateInCookie: false }
+});
+
+let signedInEmail = '';
+let signedInName = '';
+const authBox = document.getElementById('authBox');
+const reqEmailEl = document.getElementById('reqEmail');
+const reqNameEl = document.getElementById('reqName');
+const submitBtnEl = document.getElementById('submitBtn');
+
+function applyIdentity() {
+  reqEmailEl.value = signedInEmail;
+  if (!reqNameEl.value) reqNameEl.value = signedInName;
+}
+
+function showSignedIn(account) {
+  const claims = account.idTokenClaims || {};
+  signedInEmail = String(claims.email || claims.preferred_username || account.username || '').trim().toLowerCase();
+  signedInName = String(account.name || claims.name || '').trim();
+  if (!signedInEmail) { showSignInProblem('Your account did not provide an email address.'); return; }
+  applyIdentity();
+  authBox.className = 'authBox';
+  authBox.textContent = 'Signed in as ' + (signedInName ? signedInName + ' · ' : '') + signedInEmail;
+  submitBtnEl.disabled = false;
+}
+
+function showSignInProblem(message) {
+  authBox.className = 'authBox error';
+  authBox.textContent = message + ' ';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = 'Sign in with Microsoft';
+  btn.onclick = () => msalInstance.loginRedirect({ scopes: SIGNIN_SCOPES });
+  authBox.appendChild(btn);
+}
+
+async function startSignIn() {
+  try {
+    await msalInstance.initialize();
+    const result = await msalInstance.handleRedirectPromise();
+    const account = (result && result.account) || msalInstance.getAllAccounts()[0];
+    if (account) { sessionStorage.removeItem('signinTried'); showSignedIn(account); return; }
+    // Not signed in yet: send them to Microsoft once. If they come straight back
+    // without an account, show a button instead of redirecting in a loop.
+    const last = Number(sessionStorage.getItem('signinTried') || 0);
+    if (Date.now() - last < 60000) { showSignInProblem('Sign-in was not completed.'); return; }
+    sessionStorage.setItem('signinTried', String(Date.now()));
+    authBox.textContent = 'Redirecting to Microsoft sign-in…';
+    await msalInstance.loginRedirect({ scopes: SIGNIN_SCOPES });
+  } catch (err) {
+    console.error(err);
+    showSignInProblem('Could not sign you in.');
+  }
+}
+startSignIn();
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!signedInEmail) { showSignInProblem('Please sign in first.'); return; }
   const submitBtn = document.getElementById('submitBtn');
   const successMsg = document.getElementById('successMsg');
   successMsg.style.display = 'none';
@@ -122,7 +203,7 @@ form.addEventListener('submit', async (e) => {
     priority: document.getElementById('priority').value,
     site: document.getElementById('site').value,
     requesterName: document.getElementById('reqName').value,
-    requesterEmail: document.getElementById('reqEmail').value
+    requesterEmail: signedInEmail
   };
 
   try{
@@ -139,6 +220,7 @@ form.addEventListener('submit', async (e) => {
 
     successMsg.style.display = 'block';
     form.reset();
+    applyIdentity();
   }catch(err){
     console.error(err);
   }finally{
