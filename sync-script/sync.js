@@ -236,7 +236,11 @@ async function main() {
   // GitHub Pages rebuild every minute, which jammed the Pages queue so the live site went stale.
   // The label therefore shows when the data last changed.
   const SRC_RE = /(<b id="srcName">)[^<]*(<\/b>)/;
-  if (patched.replace(SRC_RE, '$1$2') === html.replace(SRC_RE, '$1$2')) {
+  // extract.js stamps every HQ issue with a freshly generated random id on each run, so those ids
+  // are ignored when deciding whether anything really changed.
+  const ID_RE = /"id":"c[a-z0-9]{6,14}"/g;
+  const norm = (x) => x.replace(SRC_RE, '$1$2').replace(ID_RE, '"id":""');
+  if (norm(patched) === norm(html)) {
     console.log('No data change - index.html left untouched.');
     return;
   }
