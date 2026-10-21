@@ -89,6 +89,9 @@
   .commentItem{background:#f7faf9;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.82rem;}
   .commentItem .commentMeta{color:var(--muted);font-size:.72rem;margin-bottom:4px;}
   .commentItem a{color:var(--green-dark);}
+  .editedTag{font-style:italic;}
+  .editLink{color:var(--green-dark);cursor:pointer;margin-left:2px;}
+  .editCommentBox{width:100%;min-height:60px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical;}
   .commentForm{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
   .commentForm input[type=text],.commentForm textarea{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;font-family:inherit;}
   .commentForm textarea{min-height:60px;resize:vertical;}
@@ -181,6 +184,10 @@ let tickets = EMBEDDED_TICKETS;
 // "Comments" sheet in FM Tickets.xlsx. Mutable copy so new comments/attachments
 // appear immediately without waiting for the next sync.
 let commentsByTicket = JSON.parse(JSON.stringify(EMBEDDED_COMMENTS || {}));
+
+// A comment that was edited is stored with a trailing marker the ticket service adds: "text ⟦edited 2026-10-21 13:05⟧".
+const EDITED_RE = /\s*⟦edited ([^⟧]*)⟧\s*$/;
+let editingComment = null;   // "ticketId:index" of the comment currently being edited
 
 function populateFilters(){
   const cats = [...new Set(tickets.map(t=>t['Category']).filter(Boolean))];
@@ -389,6 +396,7 @@ function setYourName(name){
 
 function openModal(id){
   modalOpenId = id;
+  editingComment = null;
   renderModal(id);
   document.getElementById('modalOverlay').classList.add('open');
 }
@@ -419,14 +427,22 @@ function renderModal(id){
     </div>`;
 
   const items = (commentsByTicket[id] || []);
-  const commentsHtml = items.length ? items.map(c=>{
+  const commentsHtml = items.length ? items.map((c, ci)=>{
     if (c['Type'] === 'Attachment'){
       return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])} · attached a file</div>📎 <a href="${escapeHtml(c['AttachmentURL'])}" target="_blank" rel="noopener">${escapeHtml(c['Content'])}</a></div>`;
     }
     if (c['Type'] === 'Status'){
       return `<div class="commentItem" style="background:#eef4fb;"><div class="commentMeta">${escapeHtml(c['Timestamp'])}</div>🔄 <em>${escapeHtml(c['Content'])}</em></div>`;
     }
-    return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])}</div>${escapeHtml(c['Content']).replace(/\n/g,'<br>')}</div>`;
+    const em = EDITED_RE.exec(c['Content'] || '');
+    const body = em ? String(c['Content']).slice(0, em.index) : (c['Content'] || '');
+    const editedTag = em ? ` · <span class="editedTag">edited ${escapeHtml(em[1])}</span>` : '';
+    if (editingComment === id + ':' + ci){
+      return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])}${editedTag}</div>
+        <textarea id="editCommentText" class="editCommentBox">${escapeHtml(body)}</textarea>
+        <div style="display:flex;gap:8px;margin-top:6px;"><button class="btnGreen" id="saveEditBtn" data-i="${ci}">Save</button><button class="btnGreen" id="cancelEditBtn" style="background:var(--muted);">Cancel</button></div></div>`;
+    }
+    return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])}${editedTag} · <a href="#" class="editLink" data-i="${ci}">Edit</a></div>${escapeHtml(body).replace(/\n/g,'<br>')}</div>`;
   }).join('') : '<div style="color:var(--muted);font-size:.82rem;">No comments or attachments yet.</div>';
 
   document.getElementById('modalBody').innerHTML = `
@@ -451,11 +467,63 @@ function renderModal(id){
     sel.addEventListener('change', ()=>updateStatus(sel.dataset.id, sel.value, sel));
   });
   document.getElementById('submitCommentBtn').addEventListener('click', ()=>submitComment(id));
+  document.querySelectorAll('#commentList .editLink').forEach(a=>a.addEventListener('click', e=>{ e.preventDefault(); startEditComment(id, Number(a.dataset.i)); }));
+  const saveEditEl = document.getElementById('saveEditBtn');
+  if (saveEditEl) saveEditEl.addEventListener('click', ()=>saveEditComment(id, Number(saveEditEl.dataset.i)));
+  const cancelEditEl = document.getElementById('cancelEditBtn');
+  if (cancelEditEl) cancelEditEl.addEventListener('click', ()=>cancelEditComment(id));
   document.getElementById('attachmentInput').addEventListener('change', (e)=>{
     const f = e.target.files[0];
     document.getElementById('attachmentFileName').textContent = f ? f.name : '';
     if (f) submitAttachment(id, f);
   });
+}
+
+function startEditComment(id, i){
+  editingComment = id + ':' + i;
+  renderModal(id);
+  const ta = document.getElementById('editCommentText');
+  if (ta){ ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+function cancelEditComment(id){
+  editingComment = null;
+  renderModal(id);
+}
+async function saveEditComment(id, i){
+  const c = (commentsByTicket[id] || [])[i];
+  const ta = document.getElementById('editCommentText');
+  if (!c || !ta) return;
+  const newText = ta.value.trim();
+  const em = EDITED_RE.exec(c['Content'] || '');
+  const currentText = (em ? String(c['Content']).slice(0, em.index) : (c['Content'] || '')).trim();
+  if (!newText){ alert('A comment cannot be empty.'); return; }
+  if (newText === currentText){ cancelEditComment(id); return; }
+  const btn = document.getElementById('saveEditBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'edit-comment', ticketId: id, timestamp: c['Timestamp'], author: c['Author'],
+        originalContent: c['Content'], newContent: newText, editor: getYourName() || 'Anonymous'
+      })
+    });
+    if (!res.ok){
+      let msg = await res.text();
+      try{ msg = JSON.parse(msg).error || msg; }catch(e){}
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    c['Content'] = data.content || newText;
+    editingComment = null;
+    renderModal(id);
+    showToast('Comment updated — the requester and the team have been emailed.');
+  }catch(err){
+    console.error(err);
+    alert('Could not edit the comment: ' + err.message);
+    btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 async function submitComment(id){
