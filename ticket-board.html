@@ -118,11 +118,22 @@
   <select id="sortBy">
     <option value="date_desc">Sort: Newest first</option>
     <option value="date_asc">Sort: Oldest first</option>
+    <option value="id_asc">Sort: Ticket ID (A → Z, 0 → 9)</option>
+    <option value="id_desc">Sort: Ticket ID (Z → A, 9 → 0)</option>
+    <option value="title_asc">Sort: Title (A → Z)</option>
+    <option value="title_desc">Sort: Title (Z → A)</option>
+    <option value="category_asc">Sort: Category (A → Z)</option>
+    <option value="category_desc">Sort: Category (Z → A)</option>
     <option value="priority_desc">Sort: Priority (High → Low)</option>
     <option value="priority_asc">Sort: Priority (Low → High)</option>
+    <option value="site_asc">Sort: Site (A → Z)</option>
+    <option value="site_desc">Sort: Site (Z → A)</option>
+    <option value="requester_asc">Sort: Requester (A → Z)</option>
+    <option value="requester_desc">Sort: Requester (Z → A)</option>
     <option value="status">Sort: Status (workflow order)</option>
-    <option value="category">Sort: Category (A → Z)</option>
-    <option value="id">Sort: Ticket ID</option>
+    <option value="status_desc">Sort: Status (reverse workflow order)</option>
+    <option value="assigned_asc">Sort: Assigned To (A → Z)</option>
+    <option value="assigned_desc">Sort: Assigned To (Z → A)</option>
   </select>
   <div class="viewToggle">
     <button id="tableViewBtn" class="active">Table</button>
@@ -204,11 +215,28 @@ function sortList(list, mode){
   const byDate = (t) => t['Date Submitted'] || '';
   const priRank = (t) => { const i = PRIORITIES.indexOf(t['Priority']); return i < 0 ? -1 : i; };
   const statusRank = (t) => { const i = STATUSES.indexOf(t['Status']); return i < 0 ? STATUSES.length : i; };
+  // Text columns: alphabetical, with digits compared as numbers (TCK-2 before TCK-10).
+  // Blank values always go to the bottom, whichever direction is chosen.
+  const TEXT_COLS = { id:'Ticket ID', title:'Title', category:'Category', site:'Site / Location', requester:'Requester Name', assigned:'Assigned To' };
+  const m = /^([a-z]+)_(asc|desc)$/.exec(mode);
+  if (m && TEXT_COLS[m[1]]){
+    const f = TEXT_COLS[m[1]], dir = m[2] === 'desc' ? -1 : 1;
+    const val = (t) => String(t[f] == null ? '' : t[f]).trim();
+    out.sort((a,b)=>{
+      const x = val(a), y = val(b);
+      if (!x && !y) return 0;
+      if (!x) return 1;
+      if (!y) return -1;
+      return dir * x.localeCompare(y, undefined, { numeric:true, sensitivity:'base' });
+    });
+    return out;
+  }
   switch(mode){
     case 'date_asc': out.sort((a,b)=>byDate(a).localeCompare(byDate(b))); break;
     case 'priority_desc': out.sort((a,b)=>priRank(b)-priRank(a)); break;
     case 'priority_asc': out.sort((a,b)=>priRank(a)-priRank(b)); break;
-    case 'status': out.sort((a,b)=>statusRank(a)-statusRank(b)); break;
+    case 'status': case 'status_asc': out.sort((a,b)=>statusRank(a)-statusRank(b)); break;
+    case 'status_desc': out.sort((a,b)=>statusRank(b)-statusRank(a)); break;
     case 'category': out.sort((a,b)=>(a['Category']||'').localeCompare(b['Category']||'')); break;
     case 'id': out.sort((a,b)=>(a['Ticket ID']||'').localeCompare(b['Ticket ID']||'')); break;
     case 'date_desc':
