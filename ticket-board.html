@@ -110,7 +110,7 @@
     <div class="logoChip"><img src="karm-logo.png" alt="Karm logo"></div>
     <h1>KarmSolar FM &amp; Admin — Ticket Board</h1>
   </div>
-  <div class="topbar-right"><span id="syncLabel">Auto-synced · 10/21/2026, 2:45:11 PM UTC</span> · updates automatically every few minutes, no sign-in needed</div>
+  <div class="topbar-right"><span id="syncLabel">Auto-synced · 10/21/2026, 2:45:11 PM UTC</span> · checks for new data every minute, no sign-in needed</div>
 </header>
 
 <div class="toolbar">
@@ -616,6 +616,97 @@ document.getElementById('kanbanViewBtn').addEventListener('click', ()=>{
 
 populateFilters();
 render();
+
+// ---- Live data ----------------------------------------------------------------------------
+// The tickets and comments baked into this page above are only a starting snapshot (and the
+// fallback if the live feed cannot be reached). The sync publishes the current data as
+// tickets.json on the repo's "data" branch; fetching it here means the board is fresh within
+// about a minute and no GitHub Pages rebuild is needed to show new tickets or comments.
+const LIVE_DATA_URL = 'https://raw.githubusercontent.com/FacilityAdmin-hub/karmsolar-fm-dashboard/data/tickets.json';
+const LIVE_REFRESH_MS = 60000;
+const LOCAL_CHANGE_HOLD_MS = 240000;
+const snapshotLabelText = (document.getElementById('syncLabel') || {}).textContent || '';
+let liveStamp = '';
+let holdLiveUntil = 0;
+
+// After this browser changes something (status, delete, comment, edit...), keep showing its own
+// updated view until the next sync has had time to pick the change up, so a refresh never
+// flips it back to the old value for a moment.
+(function(){
+  const origFetch = window.fetch.bind(window);
+  window.fetch = function(url, opts){
+    try{
+      if (String(url).indexOf(PROXY_URL) === 0 && opts && opts.method === 'POST') holdLiveUntil = Date.now() + LOCAL_CHANGE_HOLD_MS;
+    }catch(e){}
+    return origFetch(url, opts);
+  };
+})();
+
+function setLiveLabel(text, warn){
+  const el = document.getElementById('syncLabel');
+  if (!el) return;
+  el.textContent = text;
+  el.style.color = warn ? '#b45309' : '';
+}
+function fmtLiveStamp(iso){
+  try{ return new Date(iso).toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC'; }catch(e){ return String(iso); }
+}
+
+// Never swap the data under someone who is typing, picking a status, or editing a comment.
+function userIsBusy(){
+  if (editingComment) return true;
+  const ae = document.activeElement;
+  if (ae && ae.tagName === 'SELECT') return true;
+  if (modalOpenId){
+    const ct = document.getElementById('commentText');
+    if (ct && ct.value.trim()) return true;
+    const mb = document.getElementById('modalBody');
+    if (ae && mb && mb.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return true;
+  }
+  return false;
+}
+
+function applyLiveData(d){
+  const ids = ['filterCategory','filterStatus','filterPriority'];
+  const saved = {};
+  ids.forEach(id => { saved[id] = document.getElementById(id).value; });
+  tickets = d.tickets;
+  commentsByTicket = JSON.parse(JSON.stringify(d.comments || {}));
+  populateFilters();
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (saved[id] && [...el.options].some(o => o.value === saved[id] || o.text === saved[id])) el.value = saved[id];
+  });
+  render();
+  if (modalOpenId){
+    const mb = document.getElementById('modalBody');
+    const top = mb ? mb.scrollTop : 0;
+    renderModal(modalOpenId);
+    const mb2 = document.getElementById('modalBody');
+    if (mb2) mb2.scrollTop = top;
+  }
+}
+
+async function refreshLive(){
+  if (document.hidden || Date.now() < holdLiveUntil || userIsBusy()) return;
+  try{
+    const res = await fetch(LIVE_DATA_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const d = await res.json();
+    if (!d || !Array.isArray(d.tickets)) throw new Error('unexpected data');
+    if (d.changedAt !== liveStamp){
+      liveStamp = d.changedAt;
+      applyLiveData(d);
+    }
+    setLiveLabel('Live · data last changed ' + fmtLiveStamp(d.changedAt), false);
+  }catch(err){
+    console.warn('Live ticket data unavailable:', err);
+    setLiveLabel('Live feed unavailable, showing an older snapshot (' + snapshotLabelText.replace(/^Auto-synced · /, '') + '). Reload to retry.', true);
+  }
+}
+setInterval(refreshLive, LIVE_REFRESH_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshLive(); });
+refreshLive();
 </script>
 </body>
 </html>
