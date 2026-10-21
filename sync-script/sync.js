@@ -22,6 +22,10 @@ const INDEX_HTML_PATH = process.env.INDEX_HTML_PATH || path.join(__dirname, '..'
 // (no extra Graph call needed) and mirrors it into TICKET_ISSUES itself, in the same
 // commit as everything else.
 const TICKET_BOARD_HTML_PATH = process.env.TICKET_BOARD_HTML_PATH || path.join(__dirname, '..', 'ticket-board.html');
+// The ticket snapshot published by sync-tickets.js on the "data" branch (checked out by the
+// workflow into ./data-branch). Preferred source for the ticket mirror; ticket-board.html's
+// baked-in copy is only a fallback now (it is no longer refreshed on every change).
+const TICKET_DATA_JSON_PATH = process.env.TICKET_DATA_JSON_PATH || path.join(__dirname, '..', 'data-branch', 'tickets.json');
 
 async function getAppToken() {
   const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
@@ -138,20 +142,30 @@ const HQ_STATUS_MAP = {
 // index.html's mergeTicketIssues() expects. Returns null (never throws) if the file
 // or marker isn't there yet, so a ticket-board hiccup never fails the dashboard sync.
 function readTicketIssuesFromBoard(boardHtmlPath) {
-  if (!fs.existsSync(boardHtmlPath)) return null;
-  const html = fs.readFileSync(boardHtmlPath, 'utf-8');
-  const marker = 'const EMBEDDED_TICKETS = ';
-  const startIdx = html.indexOf(marker);
-  if (startIdx < 0) return null;
-  const jsonStart = startIdx + marker.length;
-  const endMarker = '];\n';
-  const endIdx = html.indexOf(endMarker, jsonStart);
-  if (endIdx < 0) return null;
-  let tickets;
+  let tickets = null;
+  // Preferred: the live snapshot from the data branch.
   try {
-    tickets = JSON.parse(html.slice(jsonStart, endIdx + 1));
-  } catch (e) {
-    return null;
+    if (fs.existsSync(TICKET_DATA_JSON_PATH)) {
+      const d = JSON.parse(fs.readFileSync(TICKET_DATA_JSON_PATH, 'utf-8'));
+      if (d && Array.isArray(d.tickets)) tickets = d.tickets;
+    }
+  } catch (e) { tickets = null; }
+  // Fallback: the copy baked into ticket-board.html (older, but better than nothing).
+  if (!tickets) {
+    if (!fs.existsSync(boardHtmlPath)) return null;
+    const html = fs.readFileSync(boardHtmlPath, 'utf-8');
+    const marker = 'const EMBEDDED_TICKETS = ';
+    const startIdx = html.indexOf(marker);
+    if (startIdx < 0) return null;
+    const jsonStart = startIdx + marker.length;
+    const endMarker = '];\n';
+    const endIdx = html.indexOf(endMarker, jsonStart);
+    if (endIdx < 0) return null;
+    try {
+      tickets = JSON.parse(html.slice(jsonStart, endIdx + 1));
+    } catch (e) {
+      return null;
+    }
   }
   return tickets.map(t => ({
     ref: t['Ticket ID'],
@@ -198,7 +212,6 @@ async function main() {
   console.log('Reading', INDEX_HTML_PATH, '...');
   const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
   let patched = patchIndexHtml(html, DS);
-  patched = patchSourceLabel(patched);
   patched = patchIssues(patched, issues);
 
   try {
@@ -219,6 +232,15 @@ async function main() {
     console.log('Ticket mirror step failed (non-fatal):', err.message);
   }
 
+  // Only touch the file when the DATA changed: a timestamp-only change made a commit and a
+  // GitHub Pages rebuild every minute, which jammed the Pages queue so the live site went stale.
+  // The label therefore shows when the data last changed.
+  const SRC_RE = /(<b id="srcName">)[^<]*(<\/b>)/;
+  if (patched.replace(SRC_RE, '$1$2') === html.replace(SRC_RE, '$1$2')) {
+    console.log('No data change - index.html left untouched.');
+    return;
+  }
+  patched = patchSourceLabel(patched);
   fs.writeFileSync(INDEX_HTML_PATH, patched, 'utf-8');
   console.log('index.html updated with fresh data, issues, tickets, and current label.');
 }
