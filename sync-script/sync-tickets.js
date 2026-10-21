@@ -188,6 +188,8 @@ function findNewComments(oldComments, newComments) {
   const fresh = [];
   Object.values(newComments).forEach(arr => (arr || []).forEach(c => {
     if (c['Type'] === 'Status') return;
+    // Edited comments carry a marker; the Worker already emails the team about the edit itself.
+    if (/⟦edited [^⟧]*⟧\s*$/.test(String(c['Content'] || ''))) return;
     if (!seen.has(commentKey(c))) fresh.push(c);
   }));
   return fresh;
