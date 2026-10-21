@@ -266,9 +266,17 @@ async function main() {
   const previousComments = readExistingComments(html);
   let patched = patchEmbedded(html, tickets);
   patched = patchEmbeddedComments(patched, comments);
+  // Only touch the file when the DATA changed. The label carries a timestamp, so stamping it on
+  // every pass made a commit (and a GitHub Pages rebuild) every minute, which jammed the Pages
+  // queue until the live site stopped updating. The label now shows when the data last changed.
+  const LABEL_RE = /(<span id="syncLabel">)[^<]*(<\/span>)/;
+  if (patched.replace(LABEL_RE, '$1$2') === html.replace(LABEL_RE, '$1$2')) {
+  console.log('No ticket data change - ticket-board.html left untouched.');
+  } else {
   patched = patchSourceLabel(patched);
   fs.writeFileSync(BOARD_HTML_PATH, patched, 'utf-8');
   console.log('ticket-board.html updated with fresh data and current label.');
+  }
 
   // Email the FM team about comments/attachments that weren't in the previous snapshot.
   // Runs after the board file is written; never fails the sync itself.
