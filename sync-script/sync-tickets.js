@@ -1,15 +1,13 @@
 // Scheduled sync: authenticates as the app itself (no user sign-in needed),
-// downloads FM Tickets.xlsx from Microsoft Graph, extracts the Tickets table,
-// and bakes it into ticket-board.html's EMBEDDED_TICKETS constant so every
-// visitor sees current data with zero sign-in — same pattern as index.html.
+// downloads FM Tickets.xlsx from Microsoft Graph, extracts the Tickets and Comments
+// tables, and publishes them as tickets.json on the repo's separate "data" branch.
+// ticket-board.html fetches that file live in the browser (on load and every minute),
+// so the board no longer depends on a GitHub Pages rebuild to show fresh data.
+// (Committing the data into ticket-board.html on main made a Pages rebuild per commit;
+// the rebuilds cancelled each other and the live site went stale for hours.)
 //
-// NOTE: this script used to also mirror tickets straight into index.html's
-// TICKET_ISSUES constant. That was removed — sync.js (the "Sync dashboard from
-// Microsoft Graph" workflow) now owns index.html exclusively and reads the
-// EMBEDDED_TICKETS this script writes below to do that mirroring itself. Two
-// workflows writing index.html independently raced: sync.js runs on a very
-// frequent external trigger and resolves push conflicts with `-X ours`, so it
-// was silently discarding whatever ticket data this script had just committed.
+// sync.js (the "Sync dashboard from Microsoft Graph" workflow) owns index.html and
+// mirrors the tickets from the same tickets.json into the HQ Issues & requests tab.
 const fs = require('fs');
 const path = require('path');
 const XLSX = require('xlsx');
@@ -20,6 +18,8 @@ const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET;
 const USER_UPN = process.env.GRAPH_USER_UPN || 'mohi.mohsen@karmsolar.com';
 const FILE_PATH = process.env.GRAPH_TICKETS_FILE_PATH || '/FM Tickets.xlsx';
 const BOARD_HTML_PATH = process.env.BOARD_HTML_PATH || path.join(__dirname, '..', 'ticket-board.html');
+// Published snapshot (lives on the "data" branch, checked out by the workflow into ./data-branch).
+const DATA_JSON_PATH = process.env.DATA_JSON_PATH || path.join(__dirname, '..', 'data-branch', 'tickets.json');
 
 const COLS = [
   'Ticket ID','Date Submitted','Title','Description','Category',
@@ -247,6 +247,10 @@ ${body}
   }
 }
 
+function readJson(p) {
+  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch (e) { return null; }
+}
+
 async function main() {
   if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
     throw new Error('Missing AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET environment variables.');
@@ -261,25 +265,30 @@ async function main() {
   const comments = extractComments(buf);
   console.log('Extracted comments/attachments for', Object.keys(comments).length, 'tickets.');
 
-  console.log('Reading', BOARD_HTML_PATH, '...');
-  const html = fs.readFileSync(BOARD_HTML_PATH, 'utf-8');
-  const previousComments = readExistingComments(html);
-  let patched = patchEmbedded(html, tickets);
-  patched = patchEmbeddedComments(patched, comments);
-  // Only touch the file when the DATA changed. The label carries a timestamp, so stamping it on
-  // every pass made a commit (and a GitHub Pages rebuild) every minute, which jammed the Pages
-  // queue until the live site stopped updating. The label now shows when the data last changed.
-  const LABEL_RE = /(<span id="syncLabel">)[^<]*(<\/span>)/;
-  if (patched.replace(LABEL_RE, '$1$2') === html.replace(LABEL_RE, '$1$2')) {
-  console.log('No ticket data change - ticket-board.html left untouched.');
+  // Baseline for "what is new": the last published snapshot. The very first run (no
+  // snapshot yet) falls back to the comments baked into ticket-board.html so it can never
+  // flood the team with emails for old comments.
+  const existing = readJson(DATA_JSON_PATH);
+  let previousComments = existing && existing.comments ? existing.comments : null;
+  if (!previousComments && fs.existsSync(BOARD_HTML_PATH)) {
+    previousComments = readExistingComments(fs.readFileSync(BOARD_HTML_PATH, 'utf-8'));
+  }
+
+  // Only write when the DATA changed, so the data branch gets a commit only on real changes.
+  const unchanged = existing
+    && JSON.stringify(existing.tickets) === JSON.stringify(tickets)
+    && JSON.stringify(existing.comments) === JSON.stringify(comments);
+  if (unchanged) {
+    console.log('No ticket data change - nothing to publish.');
   } else {
-  patched = patchSourceLabel(patched);
-  fs.writeFileSync(BOARD_HTML_PATH, patched, 'utf-8');
-  console.log('ticket-board.html updated with fresh data and current label.');
+    fs.mkdirSync(path.dirname(DATA_JSON_PATH), { recursive: true });
+    const payload = { changedAt: new Date().toISOString(), tickets, comments };
+    fs.writeFileSync(DATA_JSON_PATH, JSON.stringify(payload) + '\n', 'utf-8');
+    console.log('Wrote', DATA_JSON_PATH, '(', tickets.length, 'tickets ).');
   }
 
   // Email the FM team about comments/attachments that weren't in the previous snapshot.
-  // Runs after the board file is written; never fails the sync itself.
+  // Runs after the snapshot is written; never fails the sync itself.
   try {
     const fresh = findNewComments(previousComments, comments);
     if (fresh.length) {
