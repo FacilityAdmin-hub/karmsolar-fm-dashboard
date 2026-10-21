@@ -1,5 +1,8 @@
 name: Sync ticket board from Microsoft Graph
 
+# Immediate ticket refresh. ticket-write / ticket-delete / ticket-status-update dispatch this
+# right after they change Excel. The regular every-minute refresh now happens inside
+# sync.yml (driven by the external trigger), so GitHub's unreliable cron is only a backstop.
 on:
   schedule:
     - cron: '*/5 * * * *'
@@ -9,7 +12,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ticket-sync
+  group: sync-writer
   cancel-in-progress: false
 
 jobs:
@@ -28,32 +31,46 @@ jobs:
         working-directory: sync-script
         run: npm install --no-save xlsx
 
-      - name: Sync tickets (5 passes, ~60s apart, for near 1-minute freshness)
+      - name: Prepare ticket data branch
+        run: |
+          git config user.name "ticket-sync-bot"
+          git config user.email "actions@github.com"
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth 1 origin data
+            git worktree add --detach data-branch FETCH_HEAD
+          else
+            git worktree add --detach data-branch
+            git -C data-branch checkout --orphan data
+            git -C data-branch rm -rf --quiet . || true
+          fi
+
+      - name: Sync tickets from Excel (publishes tickets.json on the data branch)
         working-directory: sync-script
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           BOARD_HTML_PATH: ${{ github.workspace }}/ticket-board.html
+          DATA_JSON_PATH: ${{ github.workspace }}/data-branch/tickets.json
+        run: node sync-tickets.js
+
+      - name: Publish ticket data if changed
+        working-directory: data-branch
         run: |
-          git config --global user.name "ticket-sync-bot"
-          git config --global user.email "actions@github.com"
-          for i in 1 2 3 4 5; do
-            echo "=== Sync pass $i/5 ($(date -u +'%H:%M:%S UTC')) ==="
-            node sync-tickets.js
-            cd "$GITHUB_WORKSPACE"
-            if ! git diff --quiet -- ticket-board.html; then
-              git add ticket-board.html
-              git commit -m "Auto-sync ticket board data $(date -u +'%Y-%m-%d %H:%M UTC') (pass $i/5)"
-              for attempt in 1 2 3 4 5; do
-                git pull --rebase && git push && break
-                sleep 3
-              done
-            else
-              echo "No changes to ticket-board.html"
-            fi
-            cd "$GITHUB_WORKSPACE/sync-script"
-            if [ "$i" -lt 5 ]; then
-              sleep 55
-            fi
-          done
+          if [ -n "$(git status --porcelain -- tickets.json)" ]; then
+            git add tickets.json
+            git commit -q -m "Ticket data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            for i in 1 2 3 4 5; do
+              if git push origin HEAD:data; then
+                echo "Published ticket data."
+                break
+              fi
+              echo "Push rejected, rebuilding on top of the remote data branch (attempt $i)..."
+              git fetch --depth 1 origin data || true
+              git reset --soft FETCH_HEAD
+              git commit -q -m "Ticket data $(date -u +'%Y-%m-%d %H:%M UTC')"
+              sleep $((RANDOM % 5 + 1))
+            done
+          else
+            echo "No ticket data change."
+          fi
