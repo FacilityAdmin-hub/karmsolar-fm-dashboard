@@ -8,6 +8,13 @@ on:
 permissions:
   contents: write
 
+# One writer at a time (this workflow and ticket-sync.yml share the group): they both push to
+# the data branch, and a queue of overlapping runs used to race. A waiting run is replaced by
+# the newest one, which is fine because every run re-reads everything from Excel.
+concurrency:
+  group: sync-writer
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -24,6 +31,50 @@ jobs:
         working-directory: sync-script
         run: npm install --no-save xlsx
 
+      - name: Prepare ticket data branch
+        run: |
+          git config user.name "dashboard-sync-bot"
+          git config user.email "actions@github.com"
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth 1 origin data
+            git worktree add --detach data-branch FETCH_HEAD
+          else
+            git worktree add --detach data-branch
+            git -C data-branch checkout --orphan data
+            git -C data-branch rm -rf --quiet . || true
+          fi
+
+      - name: Sync tickets from Excel (publishes tickets.json on the data branch)
+        working-directory: sync-script
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          BOARD_HTML_PATH: ${{ github.workspace }}/ticket-board.html
+          DATA_JSON_PATH: ${{ github.workspace }}/data-branch/tickets.json
+        run: node sync-tickets.js
+
+      - name: Publish ticket data if changed
+        working-directory: data-branch
+        run: |
+          if [ -n "$(git status --porcelain -- tickets.json)" ]; then
+            git add tickets.json
+            git commit -q -m "Ticket data $(date -u +'%Y-%m-%d %H:%M UTC')"
+            for i in 1 2 3 4 5; do
+              if git push origin HEAD:data; then
+                echo "Published ticket data."
+                break
+              fi
+              echo "Push rejected, rebuilding on top of the remote data branch (attempt $i)..."
+              git fetch --depth 1 origin data || true
+              git reset --soft FETCH_HEAD
+              git commit -q -m "Ticket data $(date -u +'%Y-%m-%d %H:%M UTC')"
+              sleep $((RANDOM % 5 + 1))
+            done
+          else
+            echo "No ticket data change."
+          fi
+
       - name: Run sync
         working-directory: sync-script
         env:
@@ -32,6 +83,7 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           INDEX_HTML_PATH: ${{ github.workspace }}/index.html
           TICKET_BOARD_HTML_PATH: ${{ github.workspace }}/ticket-board.html
+          TICKET_DATA_JSON_PATH: ${{ github.workspace }}/data-branch/tickets.json
         run: node sync.js
 
       - name: Commit and push if changed
