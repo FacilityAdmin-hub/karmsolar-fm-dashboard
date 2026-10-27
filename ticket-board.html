@@ -99,6 +99,13 @@
   .detailGrid .full{grid-column:1 / -1;}
   .detailGrid label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-bottom:2px;}
   .detailGrid .val{color:var(--text);}
+  .editGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;margin-bottom:18px;font-size:.85rem;}
+  .editGrid .full{grid-column:1 / -1;}
+  .editGrid label{display:block;font-size:.7rem;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin-bottom:3px;}
+  .editGrid input,.editGrid select,.editGrid textarea{width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:.85rem;background:#fff;}
+  .editGrid textarea{resize:vertical;}
+  .editGrid .note{font-size:.75rem;color:var(--muted);}
+  @media (max-width:560px){ .editGrid,.detailGrid{grid-template-columns:1fr;} }
   .modalSection{margin-top:20px;border-top:1px solid var(--border);padding-top:16px;}
   .modalSection h3{margin:0 0 10px;font-size:.9rem;color:var(--navy);}
   .commentItem{background:#f7faf9;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:.82rem;}
@@ -514,6 +521,7 @@ async function updateStatus(id, newStatus, selectEl){
 // ---- Ticket detail modal: full fields + comments/attachments thread ----
 
 let modalOpenId = null;
+let editingTicket = null;   // ticket id whose details are being edited in the modal
 
 function getYourName(){
   return localStorage.getItem('fm_commenter_name') || '';
@@ -525,12 +533,14 @@ function setYourName(name){
 function openModal(id){
   modalOpenId = id;
   editingComment = null;
+  editingTicket = null;
   renderModal(id);
   document.getElementById('modalOverlay').classList.add('open');
 }
 
 function closeModal(){
   modalOpenId = null;
+  editingTicket = null;
   document.getElementById('modalOverlay').classList.remove('open');
 }
 
@@ -540,8 +550,9 @@ function renderModal(id){
   document.getElementById('modalTitle').textContent = t['Title'] || '(untitled)';
   document.getElementById('modalTicketId').textContent = id;
 
-  const fieldsHtml = `
+  const viewFieldsHtml = `
     <div class="detailGrid">
+      <div class="full" style="text-align:right;"><button class="btnGreen" id="editTicketBtn" type="button">Edit ticket</button></div>
       <div><label>Status</label><div class="val">${statusSelectHtml(t)}</div></div>
       <div><label>Priority</label><div class="val"><span class="pill pri-${t['Priority']}">${escapeHtml(t['Priority'])}</span></div></div>
       <div><label>Category</label><div class="val">${escapeHtml(t['Category'])}</div></div>
@@ -553,6 +564,8 @@ function renderModal(id){
       <div class="full"><label>Description</label><div class="val">${escapeHtml(t['Description']).replace(/\n/g,'<br>')}</div></div>
       ${t['Resolution Notes'] ? `<div class="full"><label>Resolution Notes</label><div class="val">${escapeHtml(t['Resolution Notes']).replace(/\n/g,'<br>')}</div></div>` : ''}
     </div>`;
+
+  const fieldsHtml = editingTicket === id ? editFormHtml(t) : viewFieldsHtml;
 
   const items = (commentsByTicket[id] || []);
   const commentsHtml = items.length ? items.map((c, ci)=>{
@@ -600,11 +613,100 @@ function renderModal(id){
   if (saveEditEl) saveEditEl.addEventListener('click', ()=>saveEditComment(id, Number(saveEditEl.dataset.i)));
   const cancelEditEl = document.getElementById('cancelEditBtn');
   if (cancelEditEl) cancelEditEl.addEventListener('click', ()=>cancelEditComment(id));
+  const editTicketEl = document.getElementById('editTicketBtn');
+  if (editTicketEl) editTicketEl.addEventListener('click', ()=>startTicketEdit(id));
+  const saveTicketEl = document.getElementById('saveTicketBtn');
+  if (saveTicketEl) saveTicketEl.addEventListener('click', ()=>saveTicketEdit(id));
+  const cancelTicketEl = document.getElementById('cancelTicketBtn');
+  if (cancelTicketEl) cancelTicketEl.addEventListener('click', ()=>cancelTicketEdit(id));
   document.getElementById('attachmentInput').addEventListener('change', (e)=>{
     const f = e.target.files[0];
     document.getElementById('attachmentFileName').textContent = f ? f.name : '';
     if (f) submitAttachment(id, f);
   });
+}
+
+// ---- Edit a ticket's details (anyone using the board; no email is sent) ----------------------
+function editFormHtml(t){
+  const v = (k) => escapeHtml(t[k] == null ? '' : t[k]);
+  const cats = [...new Set(tickets.map(x => x['Category']).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const known = PRIORITIES.includes(t['Priority']);
+  const priOpts = PRIORITIES.map(p => `<option${p === t['Priority'] ? ' selected' : ''}>${p}</option>`).join('')
+    + (known || !t['Priority'] ? '' : `<option selected>${v('Priority')}</option>`);
+  return `
+    <div class="editGrid">
+      <div class="full"><label>Title</label><input type="text" id="et_title" maxlength="200" value="${v('Title')}"></div>
+      <div><label>Category</label><input type="text" id="et_cat" list="et_catList" maxlength="100" value="${v('Category')}"><datalist id="et_catList">${cats.map(c => `<option value="${escapeHtml(c)}"></option>`).join('')}</datalist></div>
+      <div><label>Priority</label><select id="et_pri">${priOpts}</select></div>
+      <div><label>Site / Location</label><input type="text" id="et_site" maxlength="200" value="${v('Site / Location')}"></div>
+      <div><label>Assigned To</label><input type="text" id="et_assigned" maxlength="200" value="${v('Assigned To')}"></div>
+      <div><label>Requester name</label><input type="text" id="et_rname" maxlength="200" value="${v('Requester Name')}"></div>
+      <div><label>Requester email</label><input type="text" id="et_remail" maxlength="200" value="${v('Requester Email')}"></div>
+      <div class="full"><label>Description</label><textarea id="et_desc" rows="5" maxlength="5000">${v('Description')}</textarea></div>
+      <div class="full"><label>Resolution notes</label><textarea id="et_notes" rows="3" maxlength="5000">${v('Resolution Notes')}</textarea></div>
+      <div><label>Your name</label><input type="text" id="et_editor" maxlength="100" placeholder="Who is making this change" value="${escapeHtml(getYourName())}"></div>
+      <div class="full note">Status has its own dropdown on the board. Saving here does not send any email; the change is recorded in the ticket's activity.</div>
+      <div class="full" style="display:flex;gap:8px;"><button class="btnGreen" id="saveTicketBtn" type="button">Save changes</button><button class="btnGreen" id="cancelTicketBtn" type="button" style="background:var(--muted);">Cancel</button></div>
+    </div>`;
+}
+function startTicketEdit(id){
+  editingTicket = id;
+  renderModal(id);
+  const el = document.getElementById('et_title');
+  if (el) el.focus();
+}
+function cancelTicketEdit(id){
+  editingTicket = null;
+  renderModal(id);
+}
+async function saveTicketEdit(id){
+  const t = tickets.find(x => x['Ticket ID'] === id);
+  if (!t) return;
+  const g = (k) => document.getElementById('et_' + k).value.trim();
+  const vals = {
+    'Title': g('title'), 'Description': g('desc'), 'Category': g('cat'), 'Priority': g('pri'),
+    'Site / Location': g('site'), 'Assigned To': g('assigned'), 'Requester Name': g('rname'),
+    'Requester Email': g('remail'), 'Resolution Notes': g('notes')
+  };
+  if (!vals['Title'] || !vals['Description']){ alert('Title and description cannot be empty.'); return; }
+  if (vals['Requester Email'] && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(vals['Requester Email'])){ alert('That requester email does not look right.'); return; }
+  const changes = {};
+  Object.keys(vals).forEach(k => {
+    const cur = String(t[k] == null ? '' : t[k]).trim();
+    if (vals[k] !== cur) changes[k] = vals[k];
+  });
+  if (!Object.keys(changes).length){ cancelTicketEdit(id); showToast('No changes to save.'); return; }
+  const editor = (g('editor') || 'Anonymous');
+  if (g('editor')) setYourName(g('editor'));
+  const btn = document.getElementById('saveTicketBtn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try{
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'edit-ticket', ticketId: id, changes, editor })
+    });
+    if (!res.ok){
+      let msg = await res.text();
+      try{ msg = JSON.parse(msg).error || msg; }catch(e){}
+      throw new Error(msg);
+    }
+    let data = {};
+    try{ data = await res.json(); }catch(e){}
+    Object.keys(changes).forEach(k => { t[k] = changes[k]; });
+    t['Date Updated'] = data.dateUpdated || new Date().toISOString().slice(0,16).replace('T',' ');
+    if (!commentsByTicket[id]) commentsByTicket[id] = [];
+    commentsByTicket[id].push({ 'Ticket ID': id, Timestamp: 'just now', Type: 'Status', Author: 'System', Content: `Ticket edited by ${editor}: ${Object.keys(changes).join(', ')}`, AttachmentURL: '' });
+    editingTicket = null;
+    populateFilters();
+    render();
+    renderModal(id);
+    showToast('Ticket updated. Excel is saved; the full board catches up within about a minute. No email was sent.');
+  }catch(err){
+    console.error(err);
+    alert('Could not save the ticket: ' + err.message);
+    btn.disabled = false; btn.textContent = 'Save changes';
+  }
 }
 
 function startEditComment(id, i){
@@ -786,6 +888,7 @@ function userIsBusy(){
   const ae = document.activeElement;
   if (ae && ae.tagName === 'SELECT') return true;
   if (document.querySelector('.ms.open')) return true;   // a filter / sort list is open
+  if (editingTicket) return true;                        // an admin is editing ticket details
   if (modalOpenId){
     const ct = document.getElementById('commentText');
     if (ct && ct.value.trim()) return true;
