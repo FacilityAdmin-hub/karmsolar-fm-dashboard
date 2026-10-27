@@ -21,6 +21,21 @@
   .toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:16px 24px;background:#fff;border-bottom:1px solid var(--border);}
   .toolbar input,.toolbar select{padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:.85rem;}
   .toolbar .grow{flex:1;min-width:160px;}
+  /* Multi-select dropdowns (status / category / priority filters and multi-level sort) */
+  .ms{position:relative;}
+  .msBtn{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:150px;max-width:270px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;font:inherit;font-size:.85rem;color:inherit;cursor:pointer;text-align:left;}
+  .msBtn .msLbl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .msBtn .msCaret{font-size:.65rem;opacity:.6;flex:none;}
+  .ms.active .msBtn{border-color:var(--green);box-shadow:0 0 0 1px var(--green);}
+  .msPanel{display:none;position:absolute;z-index:60;top:calc(100% + 4px);left:0;min-width:100%;width:max-content;max-width:340px;max-height:340px;overflow:auto;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(15,42,61,.18);padding:6px;}
+  .ms.open .msPanel{display:block;}
+  .msHead{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:4px 8px 6px;font-size:.72rem;color:var(--muted);border-bottom:1px solid var(--border);margin-bottom:4px;}
+  .msHead button{border:none;background:none;color:var(--green);font-weight:bold;cursor:pointer;font-size:.72rem;padding:0;}
+  .msOpt{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;font-size:.85rem;cursor:pointer;white-space:nowrap;}
+  .msOpt:hover{background:#f2f7f6;}
+  .msOpt input{accent-color:var(--green);margin:0;}
+  .msNum{margin-left:auto;padding-left:10px;}
+  .msNum b{display:inline-block;font-size:.7rem;background:var(--green);color:#fff;border-radius:10px;padding:1px 7px;}
   .viewToggle{display:flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-left:auto;}
   .viewToggle button{border:none;background:#fff;padding:8px 16px;font-size:.82rem;font-weight:bold;color:var(--muted);cursor:pointer;}
   .viewToggle button.active{background:var(--green);color:#fff;}
@@ -115,29 +130,10 @@
 
 <div class="toolbar">
   <input type="text" id="searchBox" class="grow" placeholder="Search title, requester, site…">
-  <select id="filterStatus"><option value="">All statuses</option></select>
-  <select id="filterCategory"><option value="">All categories</option></select>
-  <select id="filterPriority"><option value="">All priorities</option></select>
-  <select id="sortBy">
-    <option value="date_desc">Sort: Newest first</option>
-    <option value="date_asc">Sort: Oldest first</option>
-    <option value="id_asc">Sort: Ticket ID (A → Z, 0 → 9)</option>
-    <option value="id_desc">Sort: Ticket ID (Z → A, 9 → 0)</option>
-    <option value="title_asc">Sort: Title (A → Z)</option>
-    <option value="title_desc">Sort: Title (Z → A)</option>
-    <option value="category_asc">Sort: Category (A → Z)</option>
-    <option value="category_desc">Sort: Category (Z → A)</option>
-    <option value="priority_desc">Sort: Priority (High → Low)</option>
-    <option value="priority_asc">Sort: Priority (Low → High)</option>
-    <option value="site_asc">Sort: Site (A → Z)</option>
-    <option value="site_desc">Sort: Site (Z → A)</option>
-    <option value="requester_asc">Sort: Requester (A → Z)</option>
-    <option value="requester_desc">Sort: Requester (Z → A)</option>
-    <option value="status">Sort: Status (workflow order)</option>
-    <option value="status_desc">Sort: Status (reverse workflow order)</option>
-    <option value="assigned_asc">Sort: Assigned To (A → Z)</option>
-    <option value="assigned_desc">Sort: Assigned To (Z → A)</option>
-  </select>
+  <div class="ms" id="filterStatus"></div>
+  <div class="ms" id="filterCategory"></div>
+  <div class="ms" id="filterPriority"></div>
+  <div class="ms" id="sortBy"></div>
   <div class="viewToggle">
     <button id="tableViewBtn" class="active">Table</button>
     <button id="kanbanViewBtn">Kanban</button>
@@ -189,36 +185,162 @@ let commentsByTicket = JSON.parse(JSON.stringify(EMBEDDED_COMMENTS || {}));
 const EDITED_RE = /\s*⟦edited ([^⟧]*)⟧\s*$/;
 let editingComment = null;   // "ticketId:index" of the comment currently being edited
 
+// ---- Multi-select dropdowns -----------------------------------------------------------------
+// Status / category / priority: tick as many values as you like (nothing ticked = show all).
+// Sort: tick several options to sort by more than one column - the first one ticked is the main
+// sort and each later one only breaks ties (so Category + Newest first = A-Z by category, newest
+// first inside each category). Ticking the opposite direction of a column already ticked swaps it.
+const MS = {};   // id -> { selected:[values in tick order], options, ... }
+const SORT_OPTIONS = [
+  ['date_desc','Newest first'],['date_asc','Oldest first'],
+  ['id_asc','Ticket ID (A → Z, 0 → 9)'],['id_desc','Ticket ID (Z → A, 9 → 0)'],
+  ['title_asc','Title (A → Z)'],['title_desc','Title (Z → A)'],
+  ['category_asc','Category (A → Z)'],['category_desc','Category (Z → A)'],
+  ['priority_desc','Priority (High → Low)'],['priority_asc','Priority (Low → High)'],
+  ['site_asc','Site (A → Z)'],['site_desc','Site (Z → A)'],
+  ['requester_asc','Requester (A → Z)'],['requester_desc','Requester (Z → A)'],
+  ['status','Status (workflow order)'],['status_desc','Status (reverse workflow order)'],
+  ['assigned_asc','Assigned To (A → Z)'],['assigned_desc','Assigned To (Z → A)']
+];
+const DEFAULT_SORT = 'date_desc';
+const sortCol = (v) => String(v).replace(/_(asc|desc)$/, '');
+
+function msLabel(st){
+  const n = st.selected.length;
+  const text = (v) => (st.options.find(o => o.value === v) || {}).label || v;
+  if (st.sort){
+    if (st.isDefault || n === 0) return 'Sort: ' + text(DEFAULT_SORT);
+    return n === 1 ? 'Sort: ' + text(st.selected[0]) : 'Sort: ' + n + ' levels';
+  }
+  if (n === 0) return st.allLabel;
+  if (n <= 2) return st.selected.map(text).join(', ');
+  return n + ' selected';
+}
+
+function msUpdate(id){
+  const st = MS[id]; if (!st) return;
+  st.lbl.textContent = msLabel(st);
+  st.el.classList.toggle('active', st.sort ? !st.isDefault : st.selected.length > 0);
+  st.boxes.forEach(({ box, num, value }) => {
+    const i = st.selected.indexOf(value);
+    box.checked = i >= 0;
+    num.innerHTML = '';
+    if (st.sort && st.selected.length > 1 && i >= 0){ const b = document.createElement('b'); b.textContent = String(i + 1); num.appendChild(b); }
+  });
+}
+
+function msToggle(id, value, on){
+  const st = MS[id];
+  if (st.sort){
+    if (on){
+      if (st.isDefault){ st.selected = [value]; st.isDefault = false; }       // first pick replaces the default
+      else {
+        const j = st.selected.findIndex(v => sortCol(v) === sortCol(value));
+        if (j >= 0) st.selected[j] = value; else st.selected.push(value);
+      }
+    } else {
+      st.selected = st.selected.filter(v => v !== value);
+      if (!st.selected.length){ st.selected = [DEFAULT_SORT]; st.isDefault = true; }
+    }
+  } else {
+    st.selected = on ? st.selected.concat(value) : st.selected.filter(v => v !== value);
+  }
+  msUpdate(id);
+  render();
+}
+
+function msReset(id){
+  const st = MS[id];
+  if (st.sort){ st.selected = [DEFAULT_SORT]; st.isDefault = true; } else st.selected = [];
+  msUpdate(id); render();
+}
+
+function msBuild(id, cfg){
+  const el = document.getElementById(id); if (!el) return;
+  const st = MS[id] || (MS[id] = { selected: cfg.sort ? [DEFAULT_SORT] : [], isDefault: true });
+  const sig = JSON.stringify(cfg.options);
+  st.el = el; st.sort = !!cfg.sort; st.allLabel = cfg.allLabel; st.options = cfg.options;
+  st.selected = st.selected.filter(v => cfg.options.some(o => o.value === v));
+  if (st.sort && !st.selected.length){ st.selected = [DEFAULT_SORT]; st.isDefault = true; }
+  if (st.sig === sig && st.lbl && el.contains(st.lbl)){ msUpdate(id); return; }   // same options: just refresh
+  st.sig = sig;
+  const wasOpen = el.classList.contains('open');
+  const oldScroll = st.panel ? st.panel.scrollTop : 0;
+  el.innerHTML = '';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'msBtn'; btn.setAttribute('aria-haspopup', 'true');
+  st.lbl = document.createElement('span'); st.lbl.className = 'msLbl';
+  const caret = document.createElement('span'); caret.className = 'msCaret'; caret.textContent = '▾';
+  btn.appendChild(st.lbl); btn.appendChild(caret);
+  const panel = document.createElement('div'); panel.className = 'msPanel'; st.panel = panel;
+  const head = document.createElement('div'); head.className = 'msHead';
+  const hint = document.createElement('span');
+  hint.textContent = st.sort ? 'Tick several: 1st = main sort' : 'Tick one or more';
+  const clear = document.createElement('button');
+  clear.type = 'button'; clear.textContent = st.sort ? 'Reset' : 'Clear';
+  clear.addEventListener('click', () => msReset(id));
+  head.appendChild(hint); head.appendChild(clear); panel.appendChild(head);
+  st.boxes = [];
+  cfg.options.forEach(o => {
+    const row = document.createElement('label'); row.className = 'msOpt';
+    const box = document.createElement('input'); box.type = 'checkbox'; box.value = o.value;
+    box.addEventListener('change', () => msToggle(id, o.value, box.checked));
+    const txt = document.createElement('span'); txt.textContent = o.label;
+    const num = document.createElement('span'); num.className = 'msNum';
+    row.appendChild(box); row.appendChild(txt); row.appendChild(num); panel.appendChild(row);
+    st.boxes.push({ box, num, value: o.value });
+  });
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = !el.classList.contains('open');
+    document.querySelectorAll('.ms.open').forEach(x => x.classList.remove('open'));
+    if (open){
+      el.classList.add('open');
+      panel.style.left = '0'; panel.style.right = 'auto';
+      const r = panel.getBoundingClientRect();
+      if (r.right > window.innerWidth - 8){ panel.style.left = 'auto'; panel.style.right = '0'; }
+    }
+  });
+  el.appendChild(btn); el.appendChild(panel);
+  if (wasOpen){ el.classList.add('open'); panel.scrollTop = oldScroll; }
+  msUpdate(id);
+}
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.ms.open').forEach(x => { if (!x.contains(e.target)) x.classList.remove('open'); });
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') document.querySelectorAll('.ms.open').forEach(x => x.classList.remove('open'));
+});
+
 function populateFilters(){
-  const cats = [...new Set(tickets.map(t=>t['Category']).filter(Boolean))];
-  const fc = document.getElementById('filterCategory');
-  fc.innerHTML = '<option value="">All categories</option>' + cats.map(c=>`<option>${c}</option>`).join('');
-  const fs = document.getElementById('filterStatus');
-  fs.innerHTML = '<option value="">All statuses</option>' + STATUSES.map(s=>`<option>${s}</option>`).join('');
-  const fp = document.getElementById('filterPriority');
-  fp.innerHTML = '<option value="">All priorities</option>' + PRIORITIES.slice().reverse().map(p=>`<option>${p}</option>`).join('');
+  const cats = [...new Set(tickets.map(t=>t['Category']).filter(Boolean))].sort((a,b)=>a.localeCompare(b, undefined, { sensitivity:'base' }));
+  msBuild('filterCategory', { allLabel:'All categories', options: cats.map(c => ({ value:c, label:c })) });
+  msBuild('filterStatus', { allLabel:'All statuses', options: STATUSES.map(s => ({ value:s, label:s })) });
+  msBuild('filterPriority', { allLabel:'All priorities', options: PRIORITIES.slice().reverse().map(p => ({ value:p, label:p })) });
+  msBuild('sortBy', { sort:true, options: SORT_OPTIONS.map(([value, label]) => ({ value, label })) });
 }
 
 function getFiltered(){
   const q = document.getElementById('searchBox').value.toLowerCase();
-  const st = document.getElementById('filterStatus').value;
-  const cat = document.getElementById('filterCategory').value;
-  const pri = document.getElementById('filterPriority').value;
+  const picked = (id) => (MS[id] ? MS[id].selected : []);
+  const st = picked('filterStatus');
+  const cat = picked('filterCategory');
+  const pri = picked('filterPriority');
   const list = tickets.filter(t=>{
-    if (st && t['Status'] !== st) return false;
-    if (cat && t['Category'] !== cat) return false;
-    if (pri && t['Priority'] !== pri) return false;
+    if (st.length && !st.includes(t['Status'])) return false;
+    if (cat.length && !cat.includes(t['Category'])) return false;
+    if (pri.length && !pri.includes(t['Priority'])) return false;
     if (q){
       const hay = (t['Title']+' '+t['Requester Name']+' '+t['Site / Location']+' '+t['Ticket ID']).toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
-  return sortList(list, document.getElementById('sortBy').value);
+  return sortList(list, MS.sortBy ? MS.sortBy.selected : [DEFAULT_SORT]);
 }
 
-function sortList(list, mode){
-  const out = list.slice();
+// One comparator per sort mode; several modes are chained (the next one only breaks ties).
+function comparatorFor(mode){
   const byDate = (t) => t['Date Submitted'] || '';
   const priRank = (t) => { const i = PRIORITIES.indexOf(t['Priority']); return i < 0 ? -1 : i; };
   const statusRank = (t) => { const i = STATUSES.indexOf(t['Status']); return i < 0 ? STATUSES.length : i; };
@@ -229,27 +351,33 @@ function sortList(list, mode){
   if (m && TEXT_COLS[m[1]]){
     const f = TEXT_COLS[m[1]], dir = m[2] === 'desc' ? -1 : 1;
     const val = (t) => String(t[f] == null ? '' : t[f]).trim();
-    out.sort((a,b)=>{
+    return (a,b)=>{
       const x = val(a), y = val(b);
       if (!x && !y) return 0;
       if (!x) return 1;
       if (!y) return -1;
       return dir * x.localeCompare(y, undefined, { numeric:true, sensitivity:'base' });
-    });
-    return out;
+    };
   }
   switch(mode){
-    case 'date_asc': out.sort((a,b)=>byDate(a).localeCompare(byDate(b))); break;
-    case 'priority_desc': out.sort((a,b)=>priRank(b)-priRank(a)); break;
-    case 'priority_asc': out.sort((a,b)=>priRank(a)-priRank(b)); break;
-    case 'status': case 'status_asc': out.sort((a,b)=>statusRank(a)-statusRank(b)); break;
-    case 'status_desc': out.sort((a,b)=>statusRank(b)-statusRank(a)); break;
-    case 'category': out.sort((a,b)=>(a['Category']||'').localeCompare(b['Category']||'')); break;
-    case 'id': out.sort((a,b)=>(a['Ticket ID']||'').localeCompare(b['Ticket ID']||'')); break;
+    case 'date_asc': return (a,b)=>byDate(a).localeCompare(byDate(b));
+    case 'priority_desc': return (a,b)=>priRank(b)-priRank(a);
+    case 'priority_asc': return (a,b)=>priRank(a)-priRank(b);
+    case 'status': case 'status_asc': return (a,b)=>statusRank(a)-statusRank(b);
+    case 'status_desc': return (a,b)=>statusRank(b)-statusRank(a);
+    case 'category': return (a,b)=>(a['Category']||'').localeCompare(b['Category']||'');
+    case 'id': return (a,b)=>(a['Ticket ID']||'').localeCompare(b['Ticket ID']||'');
     case 'date_desc':
-    default: out.sort((a,b)=>byDate(b).localeCompare(byDate(a))); break;
+    default: return (a,b)=>byDate(b).localeCompare(byDate(a));
   }
-  return out;
+}
+
+function sortList(list, modes){
+  const cmps = (Array.isArray(modes) ? modes : [modes]).map(comparatorFor);
+  return list.slice().sort((a,b)=>{
+    for (const c of cmps){ const r = c(a,b); if (r) return r; }
+    return 0;
+  });
 }
 
 function statusClass(s){ return 'status-' + String(s||'').replace(/\s+/g,''); }
@@ -599,7 +727,7 @@ document.getElementById('modalOverlay').addEventListener('click', (e)=>{
 });
 
 ['searchBox'].forEach(id=>document.getElementById(id).addEventListener('input', render));
-['filterStatus','filterCategory','filterPriority','sortBy'].forEach(id=>document.getElementById(id).addEventListener('change', render));
+// The filter and sort dropdowns call render() themselves when a box is ticked.
 
 document.getElementById('tableViewBtn').addEventListener('click', ()=>{
   document.getElementById('tableView').style.display='block';
@@ -657,6 +785,7 @@ function userIsBusy(){
   if (editingComment) return true;
   const ae = document.activeElement;
   if (ae && ae.tagName === 'SELECT') return true;
+  if (document.querySelector('.ms.open')) return true;   // a filter / sort list is open
   if (modalOpenId){
     const ct = document.getElementById('commentText');
     if (ct && ct.value.trim()) return true;
@@ -667,16 +796,9 @@ function userIsBusy(){
 }
 
 function applyLiveData(d){
-  const ids = ['filterCategory','filterStatus','filterPriority'];
-  const saved = {};
-  ids.forEach(id => { saved[id] = document.getElementById(id).value; });
   tickets = d.tickets;
   commentsByTicket = JSON.parse(JSON.stringify(d.comments || {}));
-  populateFilters();
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (saved[id] && [...el.options].some(o => o.value === saved[id] || o.text === saved[id])) el.value = saved[id];
-  });
+  populateFilters();   // keeps whatever is ticked (values that no longer exist are dropped)
   render();
   if (modalOpenId){
     const mb = document.getElementById('modalBody');
