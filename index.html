@@ -151,6 +151,9 @@ body.edit .ledit:focus{background:#fff;outline:2px solid var(--solar);box-shadow
 .chart-meta{display:flex;flex-wrap:wrap;gap:4px 16px;margin:4px 0 2px;font-size:11.5px;color:var(--ink)}
 .chart-meta b{color:var(--muted);font-weight:600;margin-right:3px}
 .cb-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cb-axis{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fff;min-width:0}
+.cb-axis .sel{width:100%}
+.cb-axis .cb-box{margin-top:0}
 @media(max-width:700px){.cb-grid2{grid-template-columns:1fr}}
 .cb-h{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-bottom:6px}
 .cb-box{border:1px solid var(--line);border-radius:10px;padding:8px 10px;max-height:170px;overflow:auto;background:#FBFAF6}
@@ -1286,7 +1289,7 @@ let ISSUE_FIELDS=[];      /* user-named custom column headers for issues */
 let OVERVIEW=[];          /* user-defined overview widgets (header-based queries) */
 let OVHIDDEN=[];          /* default overview tiles the user removed */
 let OVORDER=[];           /* order of default overview tiles */
-let PAGEVIEWS={issues:[{sheet:'issues',group:'Category',agg:'count',value:'',dateGran:'none',type:'bar',name:'Example: Requests by category',id:'ex_demo_category'}]};         /* per-tab custom prompt charts: {pg:[cfg,...]} */
+let PAGEVIEWS={issues:[{v:2,id:'ex_demo_category',name:'Example: Requests by category',type:'bar',sheet:'issues',x:'Category',xMulti:true,xGran:'none',xSel:[],y:{mode:'count'}}]};         /* per-tab custom prompt charts: {pg:[cfg,...]} */
 let CARDSIZES={};         /* per-card width/height overrides: {"pg:idx":{w,h}} */
 let CARDHIDDEN={};        /* cards removed via edit mode: {"pg:idx":true} */
 let CUSTOMCOLS={};        /* user-added table columns: {"pg:tableIdx":{cols:[{id,name}],rows:{rowKey:{colId:val}}}} */
@@ -1892,6 +1895,36 @@ function ovQuery(cfg){ const d=ovData(cfg.sheet); if(!d||!d.rows) return {error:
   if(agg==='avg') entries=entries.map(([k,v])=>[k,v/(cnt[k]||1)]);
   entries.sort((a,b)=>b[1]-a[1]);
   return {labels:entries.map(e=>e[0]), data:entries.map(e=>e[1])}; }
+function ovQuery2(cfg){ const d=ovData(cfg.sheet); if(!d||!d.rows) return {error:'Pick a data source.'};
+  const xi=_ovHidx(cfg.sheet,cfg.x); if(xi<0) return {error:'X-axis header "'+esc(cfg.x||'')+'" was not found in that source.'};
+  const gran=(cfg.xGran&&cfg.xGran!=='none')?cfg.xGran:null; const xSel=(cfg.xSel||[]).map(String); const xs=(!gran&&xSel.length)?new Set(xSel):null;
+  const y=cfg.y||{mode:'count'}; let yi=-1; let nums=[];
+  if(y.mode==='cats'){ yi=_ovHidx(cfg.sheet,y.header); if(yi<0) return {error:'Y-axis header "'+esc(y.header||'')+'" was not found in that source.'}; }
+  if(y.mode==='num'){ nums=(y.headers||[]).map(h=>({h:h,i:_ovHidx(cfg.sheet,h)})); if(!nums.length) return {error:'Tick at least one number column for the Y-axis.'}; const bad=nums.find(n=>n.i<0); if(bad) return {error:'Y-axis header "'+esc(bad.h)+'" was not found in that source.'}; }
+  const acc={}; const yTot={}; let mn=null,mx=null;
+  d.rows.forEach(r=>{ let k;
+    if(gran){ const dt=toDate(r[xi]); if(!dt) return; k=periodKey(dt,gran); if(!mn||dt<mn)mn=dt; if(!mx||dt>mx)mx=dt; }
+    let kl; if(gran){ kl=[k]; } else { const raw=String(r[xi]==null?'':r[xi]).trim(); if(raw==='') return; kl=cfg.xMulti?raw.split(';').map(x=>x.trim()).filter(Boolean):[raw]; if(xs) kl=kl.filter(z=>xs.has(z)); if(!kl.length) return; }
+    let yl=null; if(y.mode==='cats'){ const rawy=String(r[yi]==null?'':r[yi]).trim(); if(rawy==='') return; yl=y.multi?rawy.split(';').map(x=>x.trim()).filter(Boolean):[rawy]; }
+    kl.forEach(kk=>{ const a=acc[kk]||(acc[kk]={n:0,y:{},s:nums.map(()=>0),c:nums.map(()=>0)}); a.n++;
+      if(yl){ yl.forEach(yv=>{ a.y[yv]=(a.y[yv]||0)+1; yTot[yv]=(yTot[yv]||0)+1; }); }
+      else if(y.mode==='num'){ nums.forEach((n,j)=>{ const raw=r[n.i]; if(raw==null||raw==='') return; a.s[j]+=num(raw); a.c[j]++; }); } }); });
+  let keys=Object.keys(acc);
+  if(!keys.length) return {error: gran?('No dates were found in "'+esc(cfg.x)+'".'):'No rows matched the categories you picked.'};
+  let labels;
+  if(gran){ const seq=periodSeq(mn,mx,gran); keys=seq.length?seq:keys.sort(); labels=keys.map(k=>periodLabel(k,gran)); }
+  else if(xs){ keys=xSel.slice(); labels=keys.slice(); }
+  let series=[];
+  if(y.mode==='cats'){ let names=(y.sel&&y.sel.length)?y.sel.map(String):Object.entries(yTot).sort((a,b)=>b[1]-a[1]).slice(0,8).map(e=>e[0]);
+    series=names.map(nm=>({name:nm,data:keys.map(k=>(acc[k]&&acc[k].y[nm])||0)})); }
+  else if(y.mode==='num'){ series=nums.map((n,j)=>({name:n.h,data:keys.map(k=>{ const a=acc[k]; if(!a) return 0; return y.agg==='avg'?(a.c[j]?a.s[j]/a.c[j]:0):a.s[j]; })})); }
+  else { series=[{name:'Number of rows',data:keys.map(k=>acc[k]?acc[k].n:0)}]; }
+  if(!gran&&!xs){ const tot=keys.map((k,i)=>series.reduce((t,sr)=>t+(+sr.data[i]||0),0)); const order=keys.map((k,i)=>i).sort((a,b)=>tot[b]-tot[a]).slice(0,30);
+    labels=order.map(i=>keys[i]); series=series.map(sr=>({name:sr.name,data:order.map(i=>sr.data[i])})); }
+  return {labels:labels,series:series}; }
+function ovDraw2(canvasId,cfg,q){ const pal=[C.solar,C.petrol,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95','#B5651D','#4C6A7A']; const line=cfg.type==='line'; const multi=q.series.length>1;
+  const datasets=q.series.map((sr,i)=>({label:sr.name,data:sr.data,backgroundColor:line?'transparent':pal[i%pal.length],borderColor:pal[i%pal.length],borderRadius:5,maxBarThickness:44,fill:false,tension:.3,borderWidth:2,pointRadius:line?3:0}));
+  mkChart(canvasId,{type:line?'line':'bar',data:{labels:q.labels,datasets:datasets},options:{plugins:multi?{legend:{position:'bottom',labels:{boxWidth:11,padding:10,font:{size:11}}}}:noLeg,scales:{x:gridX,y:{...gridY,ticks:{callback:v=>fmt(v)}}},maintainAspectRatio:false}}); }
 function ovParse(cmd){ cmd=String(cmd||'').trim(); if(!cmd)return null;
   let per='none'; let m=cmd.match(/\bper\s+(day|week|month|year)s?\b/i); if(m){ per=m[1].toLowerCase(); cmd=cmd.replace(m[0],' ').replace(/\s+/g,' ').trim(); }
   let mm=cmd.match(/^count\s+by\s+(.+?)\s+from\s+(.+)$/i);
@@ -1899,7 +1932,8 @@ function ovParse(cmd){ cmd=String(cmd||'').trim(); if(!cmd)return null;
   mm=cmd.match(/^(sum|total|avg|average|mean)\s+(?:of\s+)?(.+?)\s+by\s+(.+?)\s+from\s+(.+)$/i);
   if(mm){ const agg=/avg|average|mean/i.test(mm[1])?'avg':'sum'; const sk=ovResolveSheet(mm[4]); return {agg,value:mm[2].trim(),group:mm[3].trim(),sheet:sk,sheetRaw:mm[4].trim(),dateGran:per}; }
   return {error:'Try: "count by <header> from <source>"  or  "sum <header> by <header> from <source>"  (add "per month" for dates).'}; }
-function ovDrawWidget(canvasId,cfg){ const q=ovQuery(cfg); if(!q||q.error) return q;
+function ovDrawWidget(canvasId,cfg){ if(cfg&&cfg.v===2){ const q2=ovQuery2(cfg); if(!q2||q2.error) return q2; ovDraw2(canvasId,cfg,q2); return null; }
+  const q=ovQuery(cfg); if(!q||q.error) return q;
   let {labels,data}=q; const type=cfg.type||'bar'; const pal=[C.solar,C.petrol,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95','#B5651D','#4C6A7A'];
   if((type==='doughnut'||type==='pie')&&labels.length>14){ const keep=labels.slice(0,13),kd=data.slice(0,13); const other=data.slice(13).reduce((a,b)=>a+b,0); if(other>0){keep.push('Other');kd.push(other);} labels=keep;data=kd; }
   else if(labels.length>26){ labels=labels.slice(0,26); data=data.slice(0,26); }
@@ -1924,39 +1958,84 @@ function _savedViews(page,store,rerender,heading,sub){ if(!store.length)return;
     grid.appendChild(tile); const e=ovDrawWidget('cv_'+cfg.id,cfg); if(e&&e.error) tile.querySelector('.ovmsg').textContent=e.error;
     tile.querySelector('[data-del]').onclick=()=>{ const i=store.findIndex(x=>x.id===cfg.id); if(i>=0)store.splice(i,1); saveState(); rerender(); }; });
   _enableDrag(grid,store,rerender); }
-function _promptBuilder(page,store,rerender,scopeLabel){ const sheets=ovSheets();
+function cbHeaders(key){ const d=ovData(key); return ((d&&d.headers)||[]).map((h,i)=>({i:i,t:String(h==null?'':h).trim()||('Column '+(i+1))})); }
+function cbColInfo(key,i){ const d=ovData(key); const rows=(d&&d.rows)||[]; const cnt=new Map(); let n=0,numN=0,dateN=0,serN=0;
+  rows.forEach(r=>{ const v=r[i]; if(v==null||v==='') return; const sv=String(v).trim(); if(sv==='') return; n++; cnt.set(sv,(cnt.get(sv)||0)+1);
+    if(typeof v==='number'){ numN++; if(v>20000&&v<90000) serN++; } else if(/^[\s\-+]?[\d.,]+\s*$/.test(sv.replace(/EGP/gi,''))&&isFinite(parseFloat(sv.replace(/[,\sA-Za-z]/g,'')))) numN++;
+    if(/^\d{4}-\d{2}-\d{2}/.test(sv)||/^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/.test(sv)) dateN++; });
+  const hdr=String(((d&&d.headers)||[])[i]||''); let isDate=n>0&&dateN/n>=0.7; if(!isDate&&/date|time/i.test(hdr)&&n>0&&serN/n>=0.7) isDate=true;
+  const isNum=!isDate&&n>0&&numN/n>=0.7; let semi=0; cnt.forEach((c,k)=>{ if(k.indexOf(';')>=0) semi+=c; });
+  const multi=!isNum&&!isDate&&n>0&&semi/n>=0.05&&cnt.size<=120;
+  let map=cnt; if(multi){ map=new Map(); cnt.forEach((c,k)=>{ k.split(';').map(x=>x.trim()).filter(Boolean).forEach(pt=>map.set(pt,(map.get(pt)||0)+c)); }); }
+  const vals=Array.from(map.entries()).sort((a,b)=>b[1]-a[1]||(a[0]<b[0]?-1:1));
+  return {n:n,isDate:isDate,isNum:isNum,multi:multi,vals:vals,distinct:map.size}; }
+function cbCatList(host,vals,sel,hint){
+  host.innerHTML='<div style="display:flex;gap:6px;align-items:center;margin:10px 0 6px;flex-wrap:wrap"><input class="urlin cb-s" placeholder="Search categories\u2026" style="flex:1;min-width:120px;font-family:inherit"><button class="btn cb-all" type="button" style="padding:4px 10px">Tick all</button><button class="btn cb-none" type="button" style="padding:4px 10px">Clear</button></div><div class="cb-box"></div><div class="cap cb-cnt" style="margin-top:5px"></div>';
+  const box=host.querySelector('.cb-box'), srch=host.querySelector('.cb-s'), cn=host.querySelector('.cb-cnt');
+  function note(){ cn.textContent=sel.size?(sel.size+' ticked'):hint; }
+  function draw(){ const qy=srch.value.trim().toLowerCase(); const list=vals.filter(v=>!qy||v[0].toLowerCase().indexOf(qy)>=0).slice(0,400);
+    box.innerHTML=list.map(v=>'<label><input type="checkbox" data-v="'+esc(v[0])+'"'+(sel.has(v[0])?' checked':'')+'><span>'+esc(v[0])+' <span style="color:var(--muted)">('+v[1]+')</span></span></label>').join('')||'<div class="cap">No match</div>';
+    box.querySelectorAll('input').forEach(c=>{ c.onchange=()=>{ const v=c.getAttribute('data-v'); if(c.checked)sel.add(v); else sel.delete(v); note(); }; }); note(); }
+  srch.oninput=draw; host.querySelector('.cb-all').onclick=()=>{ vals.forEach(v=>sel.add(v[0])); draw(); }; host.querySelector('.cb-none').onclick=()=>{ sel.clear(); draw(); }; draw(); }
+function _promptBuilder(page,store,rerender,scopeLabel,defSheet){ const sheets=ovSheets();
   const b=el('div','card cbuild'); page.appendChild(b);
-  b.innerHTML=`<h3>\uff0b Add a chart from your data \u2014 ${esc(scopeLabel)}</h3>
-    <p class="cap">Type a prompt with the exact header names from your uploaded sheet, or use the pickers. Examples: <span class="mono">count by Status from HQ issues</span> \u00b7 <span class="mono">sum Value Excluding VAT. by company from Payments</span> \u00b7 <span class="mono">sum Cost by Requested deparment from Couriers</span> \u00b7 <span class="mono">count by Date from Payments per month</span></p>
-    <div class="linkrow"><input class="urlin" id="cbCmd" placeholder="e.g. sum Cost by Requested deparment from Couriers" style="flex:1;font-family:inherit"><button class="btn solar" id="cbRun">Run prompt</button></div>
-    <div class="cb-grid">
-      <label class="cb-l">Source (any Excel tab)<select class="sel" id="cbSheet">${sheets.map(s=>`<option value="${s.key}">${esc(s.name)}</option>`).join('')}</select></label>
-      <label class="cb-l">Group by (header)<select class="sel" id="cbGroup"></select></label>
-      <label class="cb-l">Aggregation<select class="sel" id="cbAgg"><option value="count">Count rows</option><option value="sum">Sum of\u2026</option><option value="avg">Average of\u2026</option></select></label>
-      <label class="cb-l">Measure (for sum/avg)<select class="sel" id="cbVal"></select></label>
-      <label class="cb-l">If header is a date<select class="sel" id="cbGran"><option value="none">not a date</option><option value="day">by day</option><option value="week">by week</option><option value="month">by month</option><option value="year">by year</option></select></label>
+  b.innerHTML=`<h3>\uff0b Add a chart \u2014 ${esc(scopeLabel)}</h3>
+    <p class="cap">Pick a header for each axis, then tick the categories you want (one or several). Tick nothing to use all of them.</p>
+    <div class="cb-grid" style="margin:8px 0 12px">
+      <label class="cb-l">Source (Excel tab)<select class="sel" id="cbSheet">${sheets.map(s=>`<option value="${s.key}">${esc(s.name)}</option>`).join('')}</select></label>
       <label class="cb-l">Chart<select class="sel" id="cbType"><option value="bar">Bar</option><option value="line">Line</option></select></label>
-      <label class="cb-l">Name<input class="urlin" id="cbName" placeholder="Title for the card" style="min-width:150px"></label>
+      <label class="cb-l">Name<input class="urlin" id="cbName" placeholder="Title for the card" style="min-width:170px"></label>
     </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:4px">
+    <div class="cb-grid2">
+      <div class="cb-axis"><div class="cb-h">X-axis \u2014 pick a header</div><select class="sel" id="cbX"></select><div id="cbXOpt"></div></div>
+      <div class="cb-axis"><div class="cb-h">Y-axis \u2014 pick a header</div><select class="sel" id="cbY"></select><div id="cbYOpt"></div></div>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px">
       <button class="btn" id="cbPrev">\u25a3 Preview</button>
       <button class="btn solar" id="cbAdd">\u2713 Add chart</button>
       <span id="cbMsg" style="font-size:12.5px;color:var(--muted)"></span></div>
     <div class="chart-h" id="cbPrevWrap" style="margin-top:12px;display:none"><canvas id="cb_preview"></canvas></div>`;
-  const q=id=>b.querySelector(id);
-  function headersFor(key){ const d=ovData(key); return (d&&d.headers||[]).map((h,i)=>({t:String(h||('Column '+(i+1))).trim()})).filter(x=>x.t); }
-  function fillHeaders(){ const hs=headersFor(q('#cbSheet').value); q('#cbGroup').innerHTML=hs.map(h=>`<option>${esc(h.t)}</option>`).join(''); q('#cbVal').innerHTML='<option value="">(row count)</option>'+hs.map(h=>`<option>${esc(h.t)}</option>`).join(''); }
-  q('#cbSheet').onchange=fillHeaders; fillHeaders();
-  function readCfg(){ const agg=q('#cbAgg').value; return {sheet:q('#cbSheet').value,group:q('#cbGroup').value,agg,value:agg==='count'?'':q('#cbVal').value,dateGran:q('#cbGran').value,type:q('#cbType').value,name:q('#cbName').value.trim()}; }
-  function applyCfg(c){ if(c.sheet){q('#cbSheet').value=c.sheet;fillHeaders();} if(c.group)q('#cbGroup').value=c.group; q('#cbAgg').value=c.agg||'count'; if(c.value)q('#cbVal').value=c.value; q('#cbGran').value=c.dateGran||'none'; if(c.name)q('#cbName').value=c.name; }
-  q('#cbRun').onclick=()=>{ const p=ovParse(q('#cbCmd').value); if(!p){q('#cbMsg').textContent='Type a prompt first.';return;} if(p.error){q('#cbMsg').style.color='var(--red)';q('#cbMsg').textContent=p.error;return;}
-    if(!p.sheet){q('#cbMsg').style.color='var(--red)';q('#cbMsg').textContent='Source "'+esc(p.sheetRaw||'')+'" not recognised. Sources: '+sheets.map(s=>s.name).join(', ');return;}
-    if(!p.name)p.name=(p.agg==='count'?'Count by '+p.group:(p.agg+' '+p.value+' by '+p.group)); applyCfg(p); q('#cbMsg').style.color='var(--muted)'; q('#cbMsg').textContent='Loaded \u2014 Preview or Add.'; q('#cbPrevWrap').style.display='block'; const e=ovDrawWidget('cb_preview',readCfg()); if(e&&e.error){q('#cbMsg').style.color='var(--red)';q('#cbMsg').textContent=e.error;} };
+  const q=id=>b.querySelector(id); const st={xSel:new Set(),ySel:new Set(),yNums:new Set(),yTreat:'cats',agg:'sum',gran:'month'};
+  function fillHeaders(){ const key=q('#cbSheet').value; const hs=cbHeaders(key);
+    q('#cbX').innerHTML=hs.map(h=>`<option value="${h.i}">${esc(h.t)}</option>`).join('');
+    q('#cbY').innerHTML='<option value="">Number of rows (count)</option>'+hs.map(h=>`<option value="${h.i}">${esc(h.t)}</option>`).join('');
+    let pick=hs.find(h=>{ const f=cbColInfo(key,h.i); return !f.isNum&&!f.isDate&&f.distinct>=2&&f.distinct<=40&&f.n>=(((ovData(key)||{}).rows||[]).length*0.5); }); if(pick)q('#cbX').value=String(pick.i);
+    drawX(); drawY(); }
+  function drawX(){ const key=q('#cbSheet').value; const i=+q('#cbX').value; const info=cbColInfo(key,i); const host=q('#cbXOpt'); st.xSel.clear();
+    if(info.isDate){ host.innerHTML='<label class="cb-l" style="margin-top:10px">Group the dates by<select class="sel" id="cbXGran"><option value="month">Month</option><option value="day">Day</option><option value="week">Week</option><option value="year">Year</option></select></label><div class="cap" style="margin-top:6px">This header holds dates, so every date in the data is shown.</div>'; q('#cbXGran').value=st.gran; q('#cbXGran').onchange=()=>{ st.gran=q('#cbXGran').value; }; }
+    else cbCatList(host,info.vals,st.xSel,'Nothing ticked = all '+info.distinct+' categories'); }
+  function drawY(){ const key=q('#cbSheet').value; const v=q('#cbY').value; const host=q('#cbYOpt'); st.ySel.clear(); st.yNums.clear();
+    if(v===''){ host.innerHTML='<div class="cap" style="margin-top:10px">Counts how many rows fall under each X-axis category.</div>'; return; }
+    const info=cbColInfo(key,+v); st.yTreat=info.isNum?'num':'cats';
+    host.innerHTML='<div style="margin:10px 0 2px;display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px"><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="cbYT" value="cats"'+(st.yTreat==='cats'?' checked':'')+'> Categories (count rows)</label><label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="radio" name="cbYT" value="num"'+(st.yTreat==='num'?' checked':'')+'> Numbers (total / average)</label></div><div id="cbYSub"></div>';
+    host.querySelectorAll('input[name=cbYT]').forEach(r=>{ r.onchange=()=>{ st.yTreat=r.value; drawYSub(); }; }); drawYSub(); }
+  function drawYSub(){ const key=q('#cbSheet').value; const i=+q('#cbY').value; const host=q('#cbYSub'); st.ySel.clear(); st.yNums.clear();
+    if(st.yTreat==='cats'){ const info=cbColInfo(key,i); cbCatList(host,info.vals,st.ySel,'Nothing ticked = the 8 most common categories'); }
+    else { const hs=cbHeaders(key).filter(h=>h.i===i||cbColInfo(key,h.i).isNum); st.yNums.add(i);
+      host.innerHTML='<div class="cb-box" style="margin-top:10px"></div><div class="cap" style="margin-top:5px">Tick every number column you want as its own line or bar.</div><label class="cb-l" style="margin-top:8px">Show<select class="sel" id="cbAgg"><option value="sum">Total (sum)</option><option value="avg">Average</option></select></label>';
+      const box=host.querySelector('.cb-box'); box.innerHTML=hs.map(h=>'<label><input type="checkbox" data-i="'+h.i+'"'+(st.yNums.has(h.i)?' checked':'')+'><span>'+esc(h.t)+'</span></label>').join('');
+      box.querySelectorAll('input').forEach(c=>{ c.onchange=()=>{ const k=+c.getAttribute('data-i'); if(c.checked)st.yNums.add(k); else st.yNums.delete(k); }; });
+      q('#cbAgg').value=st.agg; q('#cbAgg').onchange=()=>{ st.agg=q('#cbAgg').value; }; } }
+  q('#cbSheet').onchange=fillHeaders; q('#cbX').onchange=drawX; q('#cbY').onchange=drawY;
+  if(defSheet&&sheets.some(s=>s.key===defSheet)) q('#cbSheet').value=defSheet; fillHeaders();
+  function readCfg(){ const key=q('#cbSheet').value; const hs=cbHeaders(key); const xi=+q('#cbX').value; const xinfo=cbColInfo(key,xi); const nm=i=>(hs.find(h=>h.i===i)||{}).t;
+    const cfg={v:2,sheet:key,type:q('#cbType').value,name:q('#cbName').value.trim(),x:nm(xi),xMulti:!!xinfo.multi,xGran:xinfo.isDate?st.gran:'none',xSel:xinfo.isDate?[]:xinfo.vals.map(v=>v[0]).filter(v=>st.xSel.has(v))};
+    const yv=q('#cbY').value;
+    if(yv===''){ cfg.y={mode:'count'}; }
+    else if(st.yTreat==='num'){ cfg.y={mode:'num',headers:hs.filter(h=>st.yNums.has(h.i)).map(h=>h.t),agg:st.agg}; }
+    else { const yinfo=cbColInfo(key,+yv); cfg.y={mode:'cats',header:nm(+yv),multi:!!yinfo.multi,sel:yinfo.vals.map(v=>v[0]).filter(v=>st.ySel.has(v))}; }
+    return cfg; }
+  function autoName(c){ const y=c.y||{mode:'count'}; const a=y.mode==='num'?y.headers.join(' & '):(y.mode==='cats'?y.header:'Rows'); return a+' by '+c.x; }
   q('#cbPrev').onclick=()=>{ const c=readCfg(); q('#cbPrevWrap').style.display='block'; const e=ovDrawWidget('cb_preview',c); q('#cbMsg').style.color=e&&e.error?'var(--red)':'var(--muted)'; q('#cbMsg').textContent=e&&e.error?e.error:'Preview below \u2014 not saved yet.'; };
-  q('#cbAdd').onclick=()=>{ const c=readCfg(); const test=ovQuery(c); if(test&&test.error){q('#cbMsg').style.color='var(--red)';q('#cbMsg').textContent=test.error;return;} if(!c.name)c.name=(c.agg==='count'?'Count by '+c.group:(c.agg+' '+c.value+' by '+c.group)); c.id=newId(); store.push(c); saveState(); rerender(); }; }
+  q('#cbAdd').onclick=()=>{ const c=readCfg(); const test=ovQuery2(c); if(test&&test.error){ q('#cbMsg').style.color='var(--red)'; q('#cbMsg').textContent=test.error; return; } if(!c.name)c.name=autoName(c); c.id=newId(); store.push(c); saveState(); rerender(); }; }
 function renderOverviewCustom(page){ _savedViews(page,OVERVIEW,()=>show('overview'),'My views','custom charts'); _promptBuilder(page,OVERVIEW,()=>show('overview'),'shows on Overview'); }
 function ovDesc(c){ const src=(ovSheets().find(s=>s.key===c.sheet)||{}).name||c.sheet; const a=c.agg==='count'?'count of rows':c.agg+' of '+c.value; const dt=(c.dateGran&&c.dateGran!=='none')?(' by '+c.dateGran):''; return a+' by '+c.group+dt+' \u2014 '+src; }
 function cbMeta(cfg){ const src=(ovSheets().find(s=>s.key===cfg.sheet)||{}).name||cfg.sheet;
+  if(cfg.v===2){ const lst=(a,n)=>a.length<=n?a.join(', '):a.slice(0,n).join(', ')+' +'+(a.length-n)+' more';
+    const xs=(cfg.xGran&&cfg.xGran!=='none')?('by '+cfg.xGran):((cfg.xSel&&cfg.xSel.length)?lst(cfg.xSel,4):'all categories'); const y=cfg.y||{mode:'count'}; let ys;
+    if(y.mode==='num') ys=(y.headers||[]).join(', ')+' ('+(y.agg==='avg'?'average':'total')+')'; else if(y.mode==='cats') ys=(y.header||'')+': '+((y.sel&&y.sel.length)?lst(y.sel,4):'most common'); else ys='Number of rows';
+    const rows2=[['Source',src],['X-axis',(cfg.x||'\u2014')+' \u2192 '+xs],['Y-axis',ys],['Chart',cfg.type==='line'?'Line':'Bar']];
+    return '<div class="chart-meta">'+rows2.map(r=>'<span><b>'+esc(r[0])+':</b> '+esc(r[1])+'</span>').join('')+'</div>'; }
   const aggLabel=cfg.agg==='sum'?'Sum of\u2026':cfg.agg==='avg'?'Average of\u2026':'Count rows';
   const meas=cfg.agg==='count'?'(row count)':(cfg.value||'\u2014');
   const dg=(cfg.dateGran&&cfg.dateGran!=='none')?('by '+cfg.dateGran):'not a date';
@@ -2032,7 +2111,7 @@ function renderCustom(pg,page){ if(pg==='update') return;
   if(pg==='overview'){ renderOverviewCustom(page); return; }
   const store=(PAGEVIEWS[pg]=PAGEVIEWS[pg]||[]);
   _savedViews(page,store,()=>show(pg),'My charts on this tab','from the synced data');
-  _promptBuilder(page,store,()=>show(pg),'stays on this tab');
+  const _defMap={consumption:'adminconsumption',utilities:'water',budget:'fna'}; _promptBuilder(page,store,()=>show(pg),'stays on this tab',_defMap[pg]||pg);
 }
 
 /* ---------- download a self-contained copy with current data + charts baked in ---------- */
