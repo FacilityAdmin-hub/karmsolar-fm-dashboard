@@ -279,13 +279,13 @@ body::after{content:'';position:fixed;left:0;right:0;top:0;height:440px;backgrou
 
 /* ---- side rail: icons only, expands on hover (same motion as option D) ---- */
 .side{position:fixed;left:0;top:0;bottom:0;width:78px;height:auto;z-index:60;overflow:hidden;background:#0A1822;border-right:1px solid var(--line);color:var(--ink);transition:width .42s cubic-bezier(.2,.8,.2,1),box-shadow .42s}
-.side:hover,.side:focus-within{width:252px;box-shadow:10px 0 50px rgba(0,0,0,.5)}
+.side:hover,.side:has(:focus-visible){width:252px;box-shadow:10px 0 50px rgba(0,0,0,.5)}
 .main{margin-left:78px;min-width:0}
 .brand{padding:16px 0 12px;border-bottom:1px solid var(--line)}
 .brand .logo{display:flex;align-items:center;gap:14px;padding:0 21px;white-space:nowrap}
 .brand .kmark{width:36px;height:36px;filter:drop-shadow(0 0 14px rgba(255,176,46,.45));animation:nightFlick 1.4s ease .1s backwards}
 .brand .logo>div{opacity:0;transform:translateX(-8px);transition:opacity .3s .06s,transform .3s .06s}
-.side:hover .brand .logo>div,.side:focus-within .brand .logo>div{opacity:1;transform:none}
+.side:hover .brand .logo>div,.side:has(:focus-visible) .brand .logo>div{opacity:1;transform:none}
 .brand b{color:var(--ink);font-family:'Sora',sans-serif;font-weight:700;font-size:16px}
 .brand small{color:var(--muted);font-family:'JetBrains Mono',monospace;letter-spacing:.22em;font-size:10px}
 .nav{padding:10px 12px;scrollbar-width:none}
@@ -294,27 +294,16 @@ body::after{content:'';position:fixed;left:0;right:0;top:0;height:440px;backgrou
 .nav a .ic{width:20px;height:20px;flex:none;display:grid;place-items:center;font-size:0;opacity:1}
 .nav a .ic svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 .nav a .nl{opacity:0;transform:translateX(-8px);transition:opacity .3s,transform .3s}
-.side:hover .nav a .nl,.side:focus-within .nav a .nl{opacity:1;transform:none}
+.side:hover .nav a .nl,.side:has(:focus-visible) .nav a .nl{opacity:1;transform:none}
 .nav a:hover{background:rgba(255,255,255,.06);color:var(--ink)}
 .nav a.on{background:rgba(255,176,46,.12);color:var(--solar);font-weight:600}
 .nav a.on::after{content:'';position:absolute;right:16px;top:50%;width:7px;height:7px;margin-top:-3px;border-radius:50%;background:var(--solar);opacity:0;transition:opacity .3s}
-.side:hover .nav a.on::after,.side:focus-within .nav a.on::after{opacity:1;animation:nightPulse 2s infinite}
+.side:hover .nav a.on::after,.side:has(:focus-visible) .nav a.on::after{opacity:1;animation:nightPulse 2s infinite}
 .side-foot{max-height:0;padding:0 20px;overflow:hidden;border-top:0 solid var(--line);color:var(--muted);font-size:11px;line-height:1.4;opacity:0;transition:opacity .3s,max-height .4s,padding .4s;white-space:normal}
-.side:hover .side-foot,.side:focus-within .side-foot{opacity:1;max-height:80px;padding:10px 20px;border-top-width:1px}
-
-/* ---- live ticker ---- */
-.ticker{display:flex;align-items:center;min-height:44px;border-bottom:1px solid var(--line);background:rgba(15,34,48,.85);overflow:hidden;font-family:'JetBrains Mono',monospace;font-size:12px}
-.tk-l{flex:none;display:flex;align-items:center;gap:8px;padding:0 18px;height:44px;color:#08141D;background:var(--solar);font-weight:700;letter-spacing:.12em;font-size:11px}
-.tk-l i{width:7px;height:7px;border-radius:50%;background:#08141D}
-.tk-w{flex:1;min-width:0;overflow:hidden}
-.tk-t{display:flex;width:max-content;gap:40px;padding-left:24px;animation:nightMarq 60s linear infinite}
-.tk-w:hover .tk-t{animation-play-state:paused}
-.tk-t span{white-space:nowrap;color:var(--muted)}
-.tk-t b{color:var(--ink);font-weight:500}
-.tk-t em{font-style:normal;color:var(--solar)}
+.side:hover .side-foot,.side:has(:focus-visible) .side-foot{opacity:1;max-height:80px;padding:10px 20px;border-top-width:1px}
 
 /* ---- header, buttons ---- */
-.top{padding:22px 30px 14px}
+.top{padding:26px 30px 14px}
 .top h1{font-weight:600;letter-spacing:-.02em;font-size:26px}
 .top .sub,.stamp{color:var(--muted)}
 .stamp b{color:var(--ink-soft);font-size:11.5px}
@@ -403,8 +392,6 @@ body.edit .ledit:focus{background:#0C202E}
 @keyframes nightSlide{from{opacity:0;transform:translateX(-18px)}to{opacity:1;transform:none}}
 @keyframes nightSpin{to{--ang:360deg}}
 @keyframes nightGrid{to{transform:translate(46px,46px)}}
-@keyframes nightMarq{to{transform:translateX(-50%)}}
-@keyframes nightBlink{50%{opacity:.25}}
 @keyframes nightFlick{0%{opacity:0}20%{opacity:1}30%{opacity:.3}45%{opacity:1}60%{opacity:.5}100%{opacity:1}}
 @keyframes nightPulse{0%{box-shadow:0 0 0 0 rgba(255,176,46,.6)}70%{box-shadow:0 0 0 9px rgba(255,176,46,0)}100%{box-shadow:0 0 0 0 rgba(255,176,46,0)}}
 
@@ -416,22 +403,25 @@ body.editcards .card{outline:1px dashed rgba(255,176,46,.5)}
 .cardtools button.on{background:var(--solar);color:#08141D;border-color:var(--solar)}
 .tiledrag{background:var(--solar);color:#08141D}
 
+/* ---- live-update notice ---- */
+.livechip{position:fixed;right:22px;bottom:22px;z-index:150;padding:10px 16px;border-radius:999px;background:var(--card2);border:1px solid rgba(255,176,46,.45);color:var(--ink);font-size:12.5px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.45);opacity:0;transform:translateY(14px);pointer-events:none;transition:opacity .35s,transform .35s}
+.livechip.on{opacity:1;transform:none}
+.livechip.act{pointer-events:auto;cursor:pointer;background:var(--solar);color:#08141D;border-color:var(--solar)}
+
 @media(max-width:920px){
  .side{width:252px;transform:translateX(-100%);transition:transform .25s}
- .side:hover,.side:focus-within{width:252px}
+ .side:hover,.side:has(:focus-visible){width:252px}
  .side.open{transform:none}
  .main{margin-left:0}
  .nav a{height:44px}
  .nav a .nl,.brand .logo>div,.side-foot{opacity:1;transform:none}
  .side-foot{max-height:none;padding:10px 20px;border-top-width:1px}
 }
-body.lite .tk-t,body.lite .kpis>.kpi:first-child{animation:none!important}
+body.lite .kpis>.kpi:first-child{animation:none!important}
 body.lite .enter .kpi,body.lite .enter .card{animation:none!important}
 body.lite .card{transition:none!important}
-body.lite .tk-w{overflow-x:auto}
 @media(prefers-reduced-motion:reduce){
  *,*::before,*::after{animation:none!important;transition:none!important}
- .tk-w{overflow-x:auto}
 }
 </style>
 </head>
@@ -446,6 +436,7 @@ body.lite .tk-w{overflow-x:auto}
       <a data-pg="consumption" class=""><span class="ic">⛁</span>Consumption</a>
       <a data-pg="utilities" class=""><span class="ic">⚡</span>Utility readings</a>
       <a data-pg="stock" class=""><span class="ic">▣</span>Stock</a>
+  <a data-pg="sandstock" class=""><span class="ic">▣</span>Sand stock</a>
       <a data-pg="contracts" class=""><span class="ic">⌂</span>Contracts</a>
       <a data-pg="couriers" class=""><span class="ic">➤</span>Couriers</a>
       <a data-pg="catering" class=""><span class="ic">🍽</span>Sites catering</a>
@@ -745,6 +736,17 @@ A.stock=function(){ const r=DS.stock.rows;
     const ratio=o>0?c/o:0; if(o>0&&ratio<0.25)low++;
     return {idx:i,name:nm,unit:unitFor(x[0],x[1]),cat,ord:o,cur:c,cons,fromLog:logged!=null,ratio,cratio:o>0?cons/o:0}; }).filter(i=>i.name);
   return {items:items.sort((a,b)=>a.ratio-b.ratio),byCat,conCat,ord,cur,con,low,n:items.length}; };
+A.sandstock=function(){ const r=DS.sandstock.rows;
+  const consMap={}; try{ A.adminCons().items.forEach(it=>{ consMap[String(it.name).trim()]=it.qty; }); }catch(e){}
+  const byCat={},conCat={}; let ord=0,cur=0,con=0,low=0;
+  const items=r.map((x,i)=>{ const o=num(x[2]),c=num(x[3]); const cat=(String(x[5]||'Other').trim())||'Other';
+    const nm=String(x[0]||'').trim();
+    const logged=consMap[nm];
+    const cons=(logged!=null)?logged:Math.max(0,o-c);   /* accumulative consumed from logs, else ordered-onhand */
+    ord+=o;cur+=c;con+=cons; byCat[cat]=(byCat[cat]||0)+c; conCat[cat]=(conCat[cat]||0)+cons;
+    const ratio=o>0?c/o:0; if(o>0&&ratio<0.25)low++;
+    return {idx:i,name:nm,unit:unitFor(x[0],x[1]),cat,ord:o,cur:c,cons,fromLog:logged!=null,ratio,cratio:o>0?cons/o:0}; }).filter(i=>i.name);
+  return {items:items.sort((a,b)=>a.ratio-b.ratio),byCat,conCat,ord,cur,con,low,n:items.length}; };
 A.contracts=function(){ const r=DS.contracts.rows; const today=new Date();
   function amt(t){ const s=String(t==null?'':t).replace(/,/g,''); if(/zero/i.test(s))return 0; const m=s.match(/-?[\d.]+/); return m?(parseFloat(m[0])||0):0; }
   /* how many months one payment covers — driven by "Payment method" (col I) ONLY */
@@ -840,8 +842,9 @@ PG.payments=function(w){
     <div class="card"><h3>By payment type</h3><p class="cap">Normal vs petty cash & others</p>${cardCtl('pty','Vendors',VEND)}<div class="chart-h sm"><canvas id="pty"></canvas></div></div>
     <div class="card"><h3>Top vendors</h3><p class="cap">Highest cumulative value</p>${cardCtl('pvv','Vendors',VEND)}<div id="pvend" style="margin-top:6px"></div></div></div>
   <div class="card"><h3>Payments by category</h3><p class="cap">Value per payment type each period</p>${cardCtl('pcat','Vendors',VEND)}<div class="chart-h"><canvas id="pcat"></canvas></div></div>
+  <div class="card"><h3>By cost center</h3><p class="cap">Value per cost center</p>${cardCtl('pcc','Vendors',VEND)}<div class="chart-h sm"><canvas id="pcc"></canvas></div></div>
   <div class="sec-title"><h2>All payments</h2><span id="pcount">${rows.length} records</span></div>
-  <div class="card">${cardCtl('ptb','Vendors',VEND)}<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Vendor</th><th>Company</th><th>Description</th><th>Type</th><th class="num">Value (EGP)</th><th>Paid</th></tr></thead><tbody id="ptb"></tbody></table></div></div>`;
+  <div class="card">${cardCtl('ptb','Vendors',VEND)}<div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Vendor</th><th>Company</th><th>Description</th><th>Cost center</th><th>Type</th><th class="num">Value (EGP)</th><th>Invoice</th><th>Paid</th></tr></thead><tbody id="ptb"></tbody></table></div></div>`;
 
   wireCardCtl(w,'pk',VEND,{},st=>{ const rs=R(st); let total=0,paid=0,paidc=0; const cos={};
     rs.forEach(({x})=>{ const v=num(x[5]); total+=v; if(String(x[9]||'').trim().toLowerCase()==='yes'){paid+=v;paidc++;} const co=String(x[3]||'\u2014').trim()||'\u2014'; cos[co]=(cos[co]||0)+v; });
@@ -874,14 +877,18 @@ PG.payments=function(w){
     const keys=seqKeys(items,st.g,st.f,st.t);
     mkChart('pcat',{type:'bar',data:{labels:keys.map(k=>periodLabel(k,st.g)),datasets:payTypes.map((ty,i)=>({label:ty,data:keys.map(k=>(agg[k]&&agg[k][ty])||0),backgroundColor:catPal[i%catPal.length],borderRadius:4,maxBarThickness:34}))},options:{plugins:{legend:{position:'top',align:'end'}},scales:{x:gridX,y:gridY},maintainAspectRatio:false}}); });
 
+  wireCardCtl(w,'pcc',VEND,{},st=>{ const cc={}; R(st).forEach(({x})=>{ const k=(String(x[11]||'\u2014').trim())||'\u2014'; cc[k]=(cc[k]||0)+num(x[5]); });
+    const e=Object.entries(cc).sort((p,q)=>q[1]-p[1]);
+    mkChart('pcc',{type:'bar',data:{labels:e.map(c=>c[0]),datasets:[{data:e.map(c=>c[1]),backgroundColor:C.green,borderRadius:5,maxBarThickness:40}]},options:{indexAxis:'y',plugins:noLeg,scales:{x:gridY,y:{grid:{display:false}}},maintainAspectRatio:false}}); });
+
   wireCardCtl(w,'ptb',VEND,{},st=>{ const tb=w.querySelector('#ptb'); tb.innerHTML=''; const rs=R(st).sort((a,b)=>num(b.x[5])-num(a.x[5]));
     w.querySelector('#pcount').textContent=rs.length+' record'+(rs.length===1?'':'s');
     rs.forEach(({x,i})=>{ const paid=String(x[9]||'').toLowerCase();
       tb.appendChild(el('tr',null,`<td>${fmtDate(toDate(x[1]))}</td>`+cell('payments',i,2,x[2])+cell('payments',i,3,x[3])+
         `<td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x[4]||'')}</td>`+
-        cell('payments',i,7,x[7])+cell('payments',i,5,fmt(num(x[5])),{num:true})+
+        cell('payments',i,11,x[11])+cell('payments',i,7,x[7])+cell('payments',i,5,fmt(num(x[5])),{num:true})+cell('payments',i,10,x[10])+
         (EDIT?cell('payments',i,9,x[9]):`<td>${paid==='yes'?'<span class="pill ok">Paid</span>':paid==='no'?'<span class="pill bad">Unpaid</span>':'<span class="pill mut">\u2014</span>'}</td>`))); });
-    if(!rs.length) tb.innerHTML='<tr><td colspan="7" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
+    if(!rs.length) tb.innerHTML='<tr><td colspan="9" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
 
 PG.hk=function(w){
   const hkRows=DS.hk.rows, hkCols=[2,3,4,5,6,7,8,9,10], hkNames=DS.hk.headers.slice(2,11);
@@ -1038,7 +1045,9 @@ PG.utilities=function(w){ const u=A.water(); const MET=u.meters.map(m=>m.nm);
   <div class="note">Meters are cumulative counters, so <b>consumption</b> = each reading minus the one before it (the same calculation as columns P\u2013T). Each card has its own meter picker, calendar and mode \u2014 by default a card shows its own meter, but you can add others to compare.</div>
   ${cards}
   <div class="sec-title"><h2>Latest meter readings</h2><span>most recent valid value per meter</span></div>
-  <div class="kpis" id="ucards"></div>`;
+  <div class="kpis" id="ucards"></div>
+  <div class="sec-title"><h2>Recorded consumption</h2><span>as calculated in the workbook (columns P–T)</span></div>
+  <div class="card"><div class="tbl-wrap"><table><thead id="uwHead"></thead><tbody id="uwBody"></tbody></table></div></div>`;
   wireCardCtl(w,'uk',MET,{},st=>{ const idx=u.meters.map((m,i)=>i).filter(i=>inSel(st.sel,u.meters[i].nm));
     const rows=u.series.filter(s=>_inRange(s.d,st.f,st.t));
     let used=0; idx.forEach(i=>consSeries(i).forEach(p=>{ if(_inRange(p.d,st.f,st.t)) used+=p.v; }));
@@ -1061,12 +1070,19 @@ PG.utilities=function(w){ const u=A.water(); const MET=u.meters.map(m=>m.nm);
           options:{plugins:idx.length>1?{legend:{position:'top',align:'start',labels:{boxWidth:11,font:{size:10.5}}}}:noLeg,scales:{x:gridX,y:{...gridY,ticks:{callback:v=>fmt(v)}}},maintainAspectRatio:false}}); } }
     const sel=w.querySelector('select.umode[data-umode="'+i+'"]'); if(sel) sel.onchange=()=>{ mode=sel.value; draw(st); }; });
   const uc=w.querySelector('#ucards');
-  u.meters.forEach(m=>uc.insertAdjacentHTML('beforeend',kpi(m.nm+(m.type==='elec'?' \u00b7 Electricity':' \u00b7 Water'),m.latest!=null?fmt(m.latest):'\u2014',m.u,m.date?('read '+fmtDate(m.date)):'no reading',m.type==='water'?'g':'p'))); };
+  u.meters.forEach(m=>uc.insertAdjacentHTML('beforeend',kpi(m.nm+(m.type==='elec'?' \u00b7 Electricity':' \u00b7 Water'),m.latest!=null?fmt(m.latest):'\u2014',m.u,m.date?('read '+fmtDate(m.date)):'no reading',m.type==='water'?'g':'p')));
+  (function(){ const d=DS.water||{headers:[],rows:[]}; const ex=(d.headers||[]).length>11?d.headers.slice(11):[]; const H=w.querySelector('#uwHead'), B=w.querySelector('#uwBody'); if(!H||!B) return;
+    if(!ex.length){ B.innerHTML='<tr><td class="cap">These columns appear after the next data sync.</td></tr>'; return; }
+    H.innerHTML='<tr><th>Date</th>'+ex.map(t=>'<th class="num">'+esc(t)+'</th>').join('')+'</tr>';
+    const rs=d.rows.map(x=>({d:toDate(x[0]),x:x})).filter(o=>o.d).sort((p,q)=>q.d-p.d); B.innerHTML='';
+    rs.forEach(o=>{ if(!ex.some((_,k)=>isNumish(o.x[11+k])&&num(o.x[11+k])!==0)) return;
+      B.appendChild(el('tr',null,'<td>'+fmtDate(o.d)+'</td>'+ex.map((_,k)=>'<td class="num">'+(isNumish(o.x[11+k])?fmt(num(o.x[11+k])):'—')+'</td>').join(''))); });
+    if(!B.children.length) B.innerHTML='<tr><td class="cap" colspan="'+(ex.length+1)+'">No recorded consumption values yet.</td></tr>'; })(); };
 
 PG.stock=function(w){ const s=A.stock(); const ITEMS=s.items.map(i=>i.name);
   const acRows=(DS.adminconsumption&&DS.adminconsumption.rows)||[]; const acNames=(DS.adminconsumption&&DS.adminconsumption.headers||[]).slice(2);
-  const norm=x=>String(x||'').trim().toLowerCase();
-  const consMap=(f,t)=>{ const m={}; acRows.forEach(x=>{ const d=toDate(x[0]); if(!_inRange(d,f,t))return; acNames.forEach((n,i)=>{ m[norm(n)]=(m[norm(n)]||0)+num(x[i+2]); }); }); return m; };
+  const norm=x=>String(x||'').trim().toLowerCase(); const LOC='hq';  /* only this location's stock-takes, like the workbook's own formula */
+  const consMap=(f,t)=>{ const m={}; acRows.forEach(x=>{ const d=toDate(x[0]); if(!_inRange(d,f,t))return; if(String(x[4]||'').trim().toLowerCase()!==LOC)return; acNames.forEach((n,i)=>{ m[norm(n)]=(m[norm(n)]||0)+num(x[i+2]); }); }); return m; };
   const pick=st=>s.items.filter(i=>inSel(st.sel,i.name));
   w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('sk','Items',ITEMS)}<div class="kpis" id="sKpis" style="margin-top:8px"></div></div>
   <div class="note"><b>Ordered</b> is accumulative; <b>Consumed</b> is summed from the consumption stock-takes inside each card\u2019s own date range.</div>
@@ -1091,6 +1107,37 @@ PG.stock=function(w){ const s=A.stock(); const ITEMS=s.items.map(i=>i.name);
     its.forEach(i=>{ const c=cm[norm(i.name)]||0; const rem=Math.max(i.ord-c,0); const pc=i.ord>0?Math.round(rem/i.ord*100):0;
       tb.appendChild(el('tr',null,`<td>${esc(i.name)}</td>`+cell('stock',i.idx,1,i.unit)+cell('stock',i.idx,5,i.cat)+
         cell('stock',i.idx,2,fmt(i.ord),{num:true})+`<td class="num">${fmt(c)}</td><td class="num">${fmt(rem)}</td>`+
+        `<td><div class="prog ${pc<25?'r':pc<60?'':'g'}" style="width:100px"><i style="width:${Math.min(pc,100)}%"></i></div></td>`)); });
+    if(!its.length) tb.innerHTML='<tr><td colspan="7" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
+
+PG.sandstock=function(w){ if(!DS.sandstock||!DS.sandstock.rows){ w.innerHTML='<div class="note">Sand stock appears here after the next data sync.</div>'; return; } const s=A.sandstock(); const ITEMS=s.items.map(i=>i.name);
+  const acRows=(DS.adminconsumption&&DS.adminconsumption.rows)||[]; const acNames=(DS.adminconsumption&&DS.adminconsumption.headers||[]).slice(2);
+  const norm=x=>String(x||'').trim().toLowerCase(); const LOC='sand';  /* only this location's stock-takes, like the workbook's own formula */
+  const consMap=(f,t)=>{ const m={}; acRows.forEach(x=>{ const d=toDate(x[0]); if(!_inRange(d,f,t))return; if(String(x[4]||'').trim().toLowerCase()!==LOC)return; acNames.forEach((n,i)=>{ m[norm(n)]=(m[norm(n)]||0)+num(x[i+2]); }); }); return m; };
+  const pick=st=>s.items.filter(i=>inSel(st.sel,i.name));
+  w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('ssk','Items',ITEMS)}<div class="kpis" id="ssKpis" style="margin-top:8px"></div></div>
+  <div class="note"><b>Ordered</b> is accumulative; <b>Consumed</b> is summed from the consumption stock-takes inside each card\u2019s own date range.</div>
+  <div class="sec-title"><h2>Ordered vs consumed by item</h2><span>this card has its own filters</span></div>
+  <div class="card"><h3>Ordered vs consumed</h3><p class="cap">Ordered (accum.) vs consumption in this card\u2019s range</p>${cardCtl('sscon','Items',ITEMS)}<div style="height:${Math.max(340,s.items.length*30+50)}px"><canvas id="sscon"></canvas></div></div>
+  <div class="sec-title"><h2>Inventory detail</h2><span>this table has its own filters</span></div>
+  <div class="card">${cardCtl('sstbl','Items',ITEMS)}<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Unit</th><th>Category</th><th class="num">Ordered (accum.)</th><th class="num">Consumed (in range)</th><th class="num">Remaining</th><th>Level</th></tr></thead><tbody id="sstb"></tbody></table></div></div>`;
+  wireCardCtl(w,'ssk',ITEMS,{},st=>{ const cm=consMap(st.f,st.t); const its=pick(st);
+    let ord=0,con=0,cur=0,low=0; its.forEach(i=>{ const c=cm[norm(i.name)]||0; ord+=i.ord; con+=c; cur+=i.cur; const rem=Math.max(i.ord-c,0); if(i.ord>0&&rem/i.ord<0.25)low++; });
+    w.querySelector('#ssKpis').innerHTML=
+      kpi('Total ordered',fmt(ord),'',its.length+' items','p')+
+      kpi('Consumed (in range)',fmt(con),'','from stock-takes','')+
+      kpi('On hand',fmt(cur),'','current count','g')+
+      kpi('Low stock',low,'','below 25%','r'); });
+  wireCardCtl(w,'sscon',ITEMS,{},st=>{ const cm=consMap(st.f,st.t);
+    const list=pick(st).map(i=>({name:i.name,ord:i.ord,cons:cm[norm(i.name)]||0})).sort((a,b)=>b.cons-a.cons);
+    mkChart('sscon',{type:'bar',data:{labels:list.map(i=>i.name),datasets:[
+      {label:'Ordered (accum.)',data:list.map(i=>i.ord),backgroundColor:C.petrol,borderRadius:4,maxBarThickness:11},
+      {label:'Consumed (in range)',data:list.map(i=>i.cons),backgroundColor:C.solar,borderRadius:4,maxBarThickness:11}]},
+      options:{indexAxis:'y',plugins:{legend:{position:'top',align:'end',labels:{boxWidth:12,font:{size:11}}}},scales:{x:{...gridY,ticks:{callback:v=>fmt(v)}},y:{grid:{display:false},ticks:{font:{size:10.5}}}},maintainAspectRatio:false}}); });
+  wireCardCtl(w,'sstbl',ITEMS,{},st=>{ const cm=consMap(st.f,st.t); const tb=w.querySelector('#sstb'); tb.innerHTML=''; const its=pick(st);
+    its.forEach(i=>{ const c=cm[norm(i.name)]||0; const rem=Math.max(i.ord-c,0); const pc=i.ord>0?Math.round(rem/i.ord*100):0;
+      tb.appendChild(el('tr',null,`<td>${esc(i.name)}</td>`+cell('sandstock',i.idx,1,i.unit)+cell('sandstock',i.idx,5,i.cat)+
+        cell('sandstock',i.idx,2,fmt(i.ord),{num:true})+`<td class="num">${fmt(c)}</td><td class="num">${fmt(rem)}</td>`+
         `<td><div class="prog ${pc<25?'r':pc<60?'':'g'}" style="width:100px"><i style="width:${Math.min(pc,100)}%"></i></div></td>`)); });
     if(!its.length) tb.innerHTML='<tr><td colspan="7" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
 
@@ -1739,7 +1786,7 @@ function handleFile(f,st){ st.innerHTML='<span class="dot" style="background:var
 
 /* ---------- export to excel ---------- */
 function exportXlsx(){ const wb=XLSX.utils.book_new();
-  const nm={payments:'Payments',hk:'H.K Feedback',hkext:'Housekeeping performance Survey',water:'WATER&ELECTRICAL CONSUMP',adminconsumption:'ADMIN consumption STOCK',stock:'Admin current stock',contracts:'contracts',couriers:'courriers',fna:'FNA Budget',sand:'Sand Admin Budget',capex:'CAPEX',actual:'Actual expenses Budget 2.0',pr:'PR ',assetsdata:'Assets Data',ppmlog:'PPM Log',pest:'Pest Control Tracker'};
+  const nm={payments:'Payments',hk:'H.K Feedback',hkext:'Housekeeping performance Survey',water:'WATER&ELECTRICAL CONSUMP',adminconsumption:'ADMIN consumption STOCK',stock:'Admin current stock',contracts:'contracts',couriers:'courriers',fna:'FNA Budget',sand:'Sand Admin Budget',capex:'CAPEX',actual:'Actual expenses Budget 2.0',pr:'PR ',assetsdata:'Assets Data',ppmlog:'PPM Log',pest:'Pest Control Tracker',sandstock:'Admin current stock Sand'};
   for(const k in DS){ const ws=XLSX.utils.aoa_to_sheet([DS[k].headers,...DS[k].rows]); XLSX.utils.book_append_sheet(wb,ws,(nm[k]||k).slice(0,31)); }
   XLSX.writeFile(wb,'KarmSolar-Dashboard-data.xlsx'); }
 
@@ -2039,7 +2086,7 @@ function ovIssueTable(){ const base=['Ref','Title','Type','Category','Location',
   const rows=ISSUES.map(it=>{ const st=curStatus(it); const r=[it.ref||'',it.title||'',it.type||'',it.category||'',it.loc||'',st]; extra.forEach(f=>r.push((it.fields&&it.fields[f])||'')); return r; });
   return {headers,rows}; }
 function ovData(key){ if(key==='issues') return ovIssueTable(); return DS[key]; }
-function ovSheets(){ const nm={payments:'Payments',hk:'H.K Feedback',hkext:'Housekeeping performance Survey',water:'Utility readings',adminconsumption:'ADMIN consumption',stock:'Admin current stock',contracts:'Contracts',couriers:'Couriers',assets:'Assets value',attendance:'Staff attendance (System One)',kstd:'Karm standard monthly consumpt.',catering:'Sites catering (items)',cateringsites:'Sites catering (sites)',fna:'FNA Budget',sand:'Sand Admin Budget',capex:'CAPEX',actual:'Actual expenses',pr:'PR tracker',assetsdata:'Assets data',ppmlog:'PPM log',pest:'Pest control'};
+function ovSheets(){ const nm={payments:'Payments',hk:'H.K Feedback',hkext:'Housekeeping performance Survey',water:'Utility readings',adminconsumption:'ADMIN consumption',stock:'Admin current stock (HQ)',sandstock:'Admin current stock (Sand)',contracts:'Contracts',couriers:'Couriers',assets:'Assets value',attendance:'Staff attendance (System One)',kstd:'Karm standard monthly consumpt.',catering:'Sites catering (items)',cateringsites:'Sites catering (sites)',fna:'FNA Budget',sand:'Sand Admin Budget',capex:'CAPEX',actual:'Actual expenses',pr:'PR tracker',assetsdata:'Assets data',ppmlog:'PPM log',pest:'Pest control'};
   const list=Object.keys(DS).filter(k=>DS[k]&&DS[k].headers).map(k=>({key:k,name:nm[k]||k,headers:DS[k].headers}));
   list.unshift({key:'issues',name:'HQ issues',headers:ovIssueTable().headers});
   return list; }
@@ -2316,6 +2363,7 @@ const PAGE_META={
   consumption:['Consumption','Admin & pantry stock consumption log'],
   utilities:['Utility readings','Water & electricity meter readings'],
   stock:['Stock','Current admin stock levels & reorder points'],
+  sandstock:['Sand stock','Sand office stock levels & reorder points'],
   contracts:['Contracts','Active leases and service agreements'],
   couriers:['Couriers','Courier requests by department'],
   catering:['Sites catering','Catering cost per site'],
@@ -2377,7 +2425,74 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
   show('payments');
 })();
 
-/* ===================== Night Operations theme: palette, rail, ticker, motion ===================== */
+/* ===================== Internal H.K audit: Yes / No checks (newer questions, answered نعم / لا) ===================== */
+(function(){
+  function yn(v){ const s=String(v==null?'':v).trim(); if(!s||s==='0') return null; if(/^(نعم|yes)/i.test(s)) return 'y'; if(/^(لا|no)/i.test(s)) return 'n'; return 'o'; }
+  function render(w){
+    const first=w.querySelector('.card'); if(!first) return;
+    const hd=(DS.hk&&DS.hk.headers)||[]; const rows=(DS.hk&&DS.hk.rows)||[];
+    let body;
+    if(hd.length<15){ body='<div class="cap">These checks appear after the next data sync.</div>'; }
+    else{
+      body=[13,14].map(c=>{ let y=0,n=0,o=0; rows.forEach(x=>{ const k=yn(x[c]); if(k==='y')y++; else if(k==='n')n++; else if(k==='o')o++; });
+        const ans=y+n+o, pc=ans?Math.round(y/ans*100):0;
+        return '<div class="bar-row" style="margin:12px 0"><div class="nm" style="min-width:220px;max-width:340px">'+esc(hd[c]||('Question '+(c-12)))+'</div><div class="prog '+(pc>=70?'g':pc>=40?'':'r')+'"><i style="width:'+pc+'%"></i></div><div class="pct">'+pc+'% yes</div></div>'
+          +'<div class="cap" style="margin:-4px 0 6px">Yes '+y+' \u00b7 No '+n+(o?' \u00b7 Other '+o:'')+' \u00b7 '+ans+' answers</div>'; }).join('');
+    }
+    first.insertAdjacentHTML('afterend','<div class="card" id="hkYN" style="margin-top:16px"><h3>Yes / No checks</h3><p class="cap">Newer yes-or-no questions on the supervisor checklist \u2014 share answered \u201cyes\u201d</p>'+body+'</div>');
+  }
+  const _hk=PG.hk; PG.hk=function(w){ _hk(w); try{ render(w); }catch(e){} };
+})();
+
+/* ===================== Live refresh: pick up newly synced data without reloading ===================== */
+const BUILD_ID='2026-10-29-v2';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+(function(){
+  if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
+  const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog'],pest:['pest']};
+  let lastTag=null, busy=false, lastTouch=Date.now(), chipEl=null, edited=false;
+  ['pointerdown','keydown','input','wheel','touchstart'].forEach(ev=>window.addEventListener(ev,()=>{ lastTouch=Date.now(); },{passive:true,capture:true}));
+  window.addEventListener('input',e=>{ if(e.target&&e.target.classList&&e.target.classList.contains('edcell')) edited=true; },true);
+  const url=()=>location.pathname+'?_='+Date.now();
+  async function tagOf(){ try{ const r=await fetch(url(),{method:'HEAD',cache:'no-store'}); if(!r.ok) return null; return [r.headers.get('etag'),r.headers.get('last-modified'),r.headers.get('content-length')].join('|'); }catch(e){ return null; } }
+  function chip(text,onclick,autoHide){ if(!chipEl){ chipEl=document.createElement('div'); chipEl.id='liveChip'; chipEl.className='livechip'; document.body.appendChild(chipEl); }
+    chipEl.textContent=text; chipEl.onclick=onclick||null; chipEl.classList.toggle('act',!!onclick); chipEl.classList.add('on'); clearTimeout(chip.t); if(autoHide) chip.t=setTimeout(()=>chipEl.classList.remove('on'),autoHide); }
+  function grab(html,marker,end){ const s=html.indexOf(marker); if(s<0) return null; const a=s+marker.length; const e=html.indexOf(end,a); return e<0?null:html.slice(a,e); }
+  function parse(html){ try{
+      const emb=grab(html,'const EMB'+'EDDED = ','};\n'), tix=grab(html,'const TICKET'+'_ISSUES = ',';\n');
+      const lab=html.match(new RegExp('<b id="src'+'Name">([^<]*)</b>')), bid=html.match(new RegExp("const BUILD_"+"ID='([^']+)'"));
+      return {emb:emb==null?null:JSON.parse(emb+'}'), tix:tix==null?null:JSON.parse(tix), label:lab?lab[1]:null, build:bid?bid[1]:null}; }catch(e){ return null; } }
+  const busyNow=()=>EDIT||!!document.querySelector('.modal-bg')||(Date.now()-lastTouch<12000);
+  function rerender(){ if(chipEl) chipEl.classList.remove('on'); try{ show(currentPage); }catch(e){} chip('Data updated just now',null,3500); }
+  function applyFresh(f){
+    const keys=new Set(Object.keys(f.emb).concat(Object.keys(EMBEDDED)));
+    const changed=[...keys].filter(k=>JSON.stringify(f.emb[k])!==JSON.stringify(EMBEDDED[k]));
+    const tixChanged=!!f.tix&&JSON.stringify(f.tix)!==JSON.stringify(TICKET_ISSUES);
+    if(f.label){ const nm=document.getElementById('srcName'); if(nm) nm.textContent=f.label; try{ LAST_LABEL=f.label; }catch(e){} }
+    if(!changed.length&&!tixChanged) return;
+    Object.keys(EMBEDDED).forEach(k=>{ delete EMBEDDED[k]; }); Object.assign(EMBEDDED,f.emb);
+    DS=JSON.parse(JSON.stringify(EMBEDDED));
+    if(tixChanged){ TICKET_ISSUES.length=0; f.tix.forEach(t=>TICKET_ISSUES.push(t)); try{ mergeTicketIssues(); }catch(e){} }
+    try{ saveState(); }catch(e){}
+    const need=(PAGE_DS[currentPage]||[]).some(k=>changed.includes(k))||(currentPage==='issues'&&tixChanged);
+    if(!need) return;                                   /* other tabs simply show fresh data when opened */
+    if(busyNow()) chip('\u21bb New data \u2014 click to update',rerender); else rerender();
+  }
+  async function poll(){
+    if(busy||document.hidden) return; busy=true;
+    try{
+      const tag=await tagOf(); if(tag==null) return; if(lastTag==null){ lastTag=tag; return; } if(tag===lastTag) return;
+      const r=await fetch(url(),{cache:'no-store'}); if(!r.ok) return; const f=parse(await r.text()); if(!f||!f.emb) return; lastTag=tag;
+      if(f.build&&f.build!==BUILD_ID){ chip('Dashboard updated \u2014 click to reload',()=>location.reload()); return; }
+      if(edited||EDIT){ chip('New data available \u2014 reload to get it (unsaved edits would be lost)',()=>location.reload()); return; }
+      applyFresh(f);
+    }catch(e){} finally{ busy=false; }
+  }
+  const _show=show; show=function(pg){ if(chipEl&&chipEl.classList.contains('act')&&chipEl.textContent.indexOf('New data \u2014')>=0) chipEl.classList.remove('on'); return _show.apply(this,arguments); };
+  setTimeout(poll,4000); setInterval(poll,45000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) poll(); });
+})();
+
+/* ===================== Night Operations theme: palette, rail, motion ===================== */
 (function(){
   try{
     /* chart palette + defaults for the dark ground */
@@ -2411,6 +2526,7 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
     procurement:'M4 20V10m6 10V4m6 20v-9m6 5H2',
     assetguide:'M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2V5zm2 14h13M8 7h7',
     sop:'M7 3h7l4 4v14H7V3zm7 0v4h4M10 12h5M10 16h5',
+    sandstock:'M3 8l9-5 9 5v8l-9 5-9-5V8zm9 5v8M3 8l9 5 9-5',
     dot:'M12 8a4 4 0 100 8 4 4 0 000-8z'
   };
   try{
@@ -2422,20 +2538,6 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
       if(t){ const sp=document.createElement('span'); sp.className='nl'; sp.textContent=t.nodeValue.trim(); a.replaceChild(sp,t); a.setAttribute('title',sp.textContent); a.setAttribute('tabindex','0'); }
     });
   }catch(e){}
-
-  /* live ticker of the newest payments */
-  function buildTicker(){
-    const main=document.querySelector('.main'); if(!main) return;
-    let t=document.getElementById('ticker');
-    if(!t){ t=document.createElement('div'); t.id='ticker'; t.className='ticker'; t.setAttribute('aria-label','Latest payments'); main.insertBefore(t,main.firstChild); }
-    const p=(typeof DS!=='undefined'&&DS.payments&&DS.payments.rows)?DS.payments.rows:[];
-    if(!p.length){ t.style.display='none'; return; } t.style.display='';
-    const M3=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    const rows=p.map(r=>({d:toDate(r[1]),r:r})).filter(x=>x.d).sort((a,b)=>b.d-a.d).slice(0,10);
-    const items=rows.map(x=>{ const r=x.r; const v=Math.round(num(r[5])); return '<span>'+x.d.getUTCDate()+' '+M3[x.d.getUTCMonth()]+' \u00b7 <b>'+esc(String(r[2]||'').trim())+'</b> \u00b7 '+esc(String(r[4]||'').trim().slice(0,38))+' \u00b7 <em>EGP '+v.toLocaleString('en-US')+'</em></span>'; }).join('');
-    t.innerHTML='<span class="tk-l"><i></i>LIVE</span><div class="tk-w"><div class="tk-t">'+items+items+'</div></div>';
-    const tt=t.querySelector('.tk-t'); if(tt) tt.style.animationDuration=Math.max(40,rows.length*8)+'s';
-  }
 
   /* numbers count up when a tab opens */
   function countUp(root){
@@ -2459,8 +2561,8 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
   }
   try{
     const _show=show;
-    show=function(pg){ const r=_show.apply(this,arguments); try{ buildTicker(); enter(); }catch(e){} return r; };
-    buildTicker(); enter();
+    show=function(pg){ const r=_show.apply(this,arguments); try{ enter(); }catch(e){} return r; };
+    enter();
     /* self-protection: if this machine renders slowly, switch the always-on effects off */
     document.body.classList.remove('lite');
     setTimeout(function(){ try{ if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches){ document.body.classList.add('lite'); return; }
