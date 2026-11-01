@@ -32,13 +32,14 @@ function toDate(v) {
 
 // ---------- SPEC: identical to dash.html's declarative sheet map ----------
 const SPEC = {
-  payments: { name: 'Payments', cols: [0,1,2,3,4,7,8,10,12,13], valid: c => isNumish(c[0]) },
-  hk: { name: 'H.K Feedback', cols: [0,5,6,7,8,9,10,11,12,13,14,18,19], valid: c => isNumish(c[0]) && num(c[0]) > 0 },
+  payments: { name: 'Payments', cols: [0,1,2,3,4,7,8,10,12,13,6,16], valid: c => isNumish(c[0]) || (toDate(c[1]) != null && String(c[2] || '').trim() !== '' && num(c[7]) > 0) },
+  hk: { name: 'H.K Feedback', cols: [0,5,6,7,8,9,10,11,12,13,14,18,19,15,16], valid: c => isNumish(c[0]) && num(c[0]) > 0 },
   hkext: { name: 'Housekeeping performance Survey', cols: [0,1,5,6,7,8,9,10,11,12,13,14,15], valid: c => { const id = String(c[0] || '').trim(); return id !== '' && id !== '0'; } },
   kstd: { name: 'Karm standard monthly consumpt.', cols: [0,1,2,3,4,5,6,7,8], valid: c => String(c[0] || '').trim() !== '' },
-  water: { name: 'WATER&ELECTRICAL CONSUMPTION', cols: [1,5,6,7,8,9,10,11,12,13,14], valid: c => num(c[0]) > 0 && toDate(c[1]) != null },
-  adminconsumption: { name: 'ADMIN consumption STOCK', cols: Array.from({length:44},(_,i)=>i+1), valid: c => num(c[0]) > 0 && toDate(c[1]) != null },
+  water: { name: 'WATER&ELECTRICAL CONSUMPTION', cols: [1,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19], valid: c => num(c[0]) > 0 && toDate(c[1]) != null },
+  adminconsumption: { name: 'ADMIN consumption STOCK', cols: Array.from({length:51},(_,i)=>i+1), valid: c => num(c[0]) > 0 && toDate(c[1]) != null },
   stock: { name: 'Admin current stock', cols: [0,2,3,4,6,8], valid: c => String(c[0] || '').trim() !== '' },
+  sandstock: { name: 'Admin current stock Sand', cols: [0,2,3,4,6,8], valid: c => String(c[0] || '').trim() !== '' },
   contracts: { name: 'contracts', cols: [0,2,3,4,5,6,7,8,10,11,16,17], valid: c => String(c[0] || '').trim() !== '' },
   couriers: { name: 'courriers', cols: [0,1,2,5], valid: c => toDate(c[0]) != null },
   fna: { name: 'FNA Budget', cols: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,29], valid: c => String(c[0] || '').trim() !== '' },
