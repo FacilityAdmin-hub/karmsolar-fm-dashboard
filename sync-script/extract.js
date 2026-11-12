@@ -61,13 +61,13 @@ function extractSheet(wb, spec) {
   const hr = spec.headerRow || 0;
   if (!aoa.length || aoa.length <= hr) return { headers: spec.cols.map(() => ''), rows: [] };
   const headers = spec.cols.map(c => String((aoa[hr] || [])[c] == null ? '' : (aoa[hr] || [])[c]).trim());
-  const rows = []; let empt = 0;
+  const rows = [], rowsrc = []; let empt = 0;
   for (let i = hr + 1; i < aoa.length; i++) {
     const raw = aoa[i] || [];
-    if (spec.valid(raw)) { rows.push(spec.cols.map(c => { const v = raw[c]; return v == null ? '' : v; })); empt = 0; }
+    if (spec.valid(raw)) { rows.push(spec.cols.map(c => { const v = raw[c]; return v == null ? '' : v; })); rowsrc.push(i); empt = 0; }
     else { empt++; if (empt > 250 && rows.length > 0) break; }
   }
-  return { headers, rows };
+  return { headers, rows, sheet: sname, rowsrc };
 }
 
 // ---------- HQ Issues: ported faithfully from dash.html ----------
@@ -350,6 +350,61 @@ function extractHKChecklist(wb) {
 // Cafeteria utensils: two header rows (month over week), one row per utensil
 function extractUtensils(wb) { const z = n => String(n).replace(/\s+/g, '').toLowerCase(); const sname = wb.SheetNames.find(n => z(n) === 'cafeteriautensils') || wb.SheetNames.find(n => z(n).startsWith('cafeteria')); if (!sname) return null; const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sname], { header: 1, raw: true, blankrows: false, defval: '' }); if (aoa.length < 2) return { headers: ['Category', 'QTY'], rows: [] }; const months = aoa[0] || [], weeks = aoa[1] || []; const width = Math.max(months.length, weeks.length, 2); const headers = ['Category', 'QTY']; let mon = ''; for (let c = 2; c < width; c++) { const m = String(months[c] == null ? '' : months[c]).trim(); if (m) mon = m; const wk = String(weeks[c] == null ? '' : weeks[c]).trim() || ('week ' + (((c - 2) % 4) + 1)); headers.push((mon ? mon + ' ' : '') + wk); } const rows = []; for (let i = 2; i < aoa.length; i++) { const r = aoa[i] || []; const name = String(r[0] == null ? '' : r[0]).trim(); if (!name) continue; const row = []; for (let c = 0; c < headers.length; c++) { const v = r[c]; row.push(v == null ? '' : v); } row[0] = name; rows.push(row); } return { headers, rows }; }
 
+
+// ---------- Workbook store: every sheet's cells, so the dashboard can fetch ANY workbook column into a table column ----------
+// It is published inside index.html (compressed), so it is kept small and personal columns are withheld.
+const WB_MAX_ROWS = 2500, WB_MAX_COLS = 70, WB_MAX_CELL = 240, WB_MAX_BYTES = 4 * 1024 * 1024;
+const WB_SKIP_SHEETS = /payroll|salar|password/i;   // sheets whose name matches are never published
+const WB_PRIVATE_COLS = /e-?mail|phone|mobile|\btel\b|password|passcode|iban|account\s*n(?:o|um)|salary|national\s*id|\bssn\b|passport|\u0647\u0627\u062a\u0641|\u0645\u0648\u0628\u0627\u064a\u0644|\u062a\u0644\u064a\u0641\u0648\u0646|\u0628\u0631\u064a\u062f|\u0627\u064a\u0645\u064a\u0644|\u0628\u0627\u0633\u0648\u0631\u062f|\u0631\u0627\u062a\u0628/i;
+const WB_EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+const WB_PHONE_RE = /^(?:\+?20|0)1[0-25]\d{8}$|^\+\d[\d\s\-()]{9,}$/;
+function wbCell(v) {
+  if (v == null || v === '') return '';
+  if (v instanceof Date) return isNaN(v) ? '' : v.toISOString();
+  if (typeof v === 'number') return Number.isFinite(v) ? Math.round(v * 1e6) / 1e6 : '';
+  const s = String(v).trim();
+  if (WB_EMAIL_RE.test(s) || WB_PHONE_RE.test(s.replace(/\s+/g, ''))) return '';
+  return s.length > WB_MAX_CELL ? s.slice(0, WB_MAX_CELL) : s;
+}
+function extractStore(wb) {
+  const sheets = [], skipped = [];
+  for (const name of wb.SheetNames) {
+    try {
+      if (WB_SKIP_SHEETS.test(name)) { skipped.push(name + ' (excluded)'); continue; }
+      const ws = wb.Sheets[name]; if (!ws || !ws['!ref']) continue;
+      const rng = XLSX.utils.decode_range(ws['!ref']);
+      if (rng.e.r - rng.s.r + 1 > 20000 || rng.e.c - rng.s.c + 1 > 200) { skipped.push(name + ' (too large)'); continue; }
+      const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false, defval: '' });
+      if (!aoa.length) continue;
+      let hr = 0;
+      for (let i = 0; i < Math.min(aoa.length, 10); i++) { if ((aoa[i] || []).filter(x => x !== '' && x != null).length >= 2) { hr = i; break; } }
+      let width = 0;
+      for (const r of aoa) { for (let c = (r || []).length - 1; c >= 0; c--) { if (r[c] !== '' && r[c] != null) { width = Math.max(width, c + 1); break; } } }
+      width = Math.min(width, WB_MAX_COLS);
+      const hdrRow = aoa[hr] || [];
+      const priv = [];
+      for (let c = 0; c < width; c++) { if (WB_PRIVATE_COLS.test(String(hdrRow[c] == null ? '' : hdrRow[c]))) priv.push(c); }
+      const rows = aoa.slice(0, WB_MAX_ROWS).map((r, ri) => {
+        const out = [];
+        for (let c = 0; c < width; c++) out.push(priv.includes(c) && ri !== hr ? '' : wbCell((r || [])[c]));
+        while (out.length && out[out.length - 1] === '') out.pop();
+        return out;
+      });
+      const h = [];
+      for (let c = 0; c < width; c++) { const t = String(wbCell(hdrRow[c])); h.push(priv.includes(c) ? '(withheld) ' + t : t); }
+      sheets.push({ n: name, hr, h, r: rows });
+    } catch (e) { skipped.push(name + ' (' + e.message + ')'); }
+  }
+  // keep the whole store under the size cap by dropping the biggest sheets first
+  const size = x => JSON.stringify(x).length;
+  let total = size(sheets);
+  while (total > WB_MAX_BYTES && sheets.length) {
+    let bi = 0; for (let i = 1; i < sheets.length; i++) { if (size(sheets[i]) > size(sheets[bi])) bi = i; }
+    skipped.push(sheets[bi].n + ' (over the size cap)'); sheets.splice(bi, 1); total = size(sheets);
+  }
+  return { v: 1, sheets, skipped };
+}
+
 function extractAll(workbookBuffer) {
   const wb = XLSX.read(workbookBuffer, { type: 'buffer', cellDates: true });
   const DS = {};
@@ -373,7 +428,9 @@ function extractAll(workbookBuffer) {
   const utensils = extractUtensils(wb);
   if (utensils) DS.utensils = utensils;
   const { issues, fields } = parseHQIssuesFromWorkbook(wb);
-  return { DS, issues, issueFields: fields, missing, sheetNames: wb.SheetNames };
+  let WB = null;
+  try { WB = extractStore(wb); } catch (e) { console.warn('Workbook store skipped (non-fatal):', e.message); }
+  return { DS, issues, issueFields: fields, missing, sheetNames: wb.SheetNames, WB };
 }
 
 module.exports = { extractAll };

@@ -30,81 +30,81 @@ const TICKET_BOARD_HTML_PATH = process.env.TICKET_BOARD_HTML_PATH || path.join(_
 const TICKET_DATA_JSON_PATH = process.env.TICKET_DATA_JSON_PATH || path.join(__dirname, '..', 'data-branch', 'tickets.json');
 
 async function getAppToken() {
-    const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
-    const body = new URLSearchParams({
-          client_id: CLIENT_ID,
-          client_secret: CLIENT_SECRET,
-          scope: 'https://graph.microsoft.com/.default',
-          grant_type: 'client_credentials'
-    });
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-    if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`Token request failed: ${res.status} ${text}`);
-    }
-    const json = await res.json();
-    return json.access_token;
+  const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
+  const body = new URLSearchParams({
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    scope: 'https://graph.microsoft.com/.default',
+    grant_type: 'client_credentials'
+  });
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Token request failed: ${res.status} ${text}`);
+  }
+  const json = await res.json();
+  return json.access_token;
 }
 
 async function downloadWorkbook(token) {
-    const encodedPath = encodeURI(FILE_PATH);
-    const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/drive/root:${encodedPath}:/content`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-    if (!res.ok) {
-          const text = await res.text();
-          throw new Error(`Graph file download failed: ${res.status} ${text}`);
-    }
-    const arrayBuf = await res.arrayBuffer();
-    return Buffer.from(arrayBuf);
+  const encodedPath = encodeURI(FILE_PATH);
+  const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/drive/root:${encodedPath}:/content`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Graph file download failed: ${res.status} ${text}`);
+  }
+  const arrayBuf = await res.arrayBuffer();
+  return Buffer.from(arrayBuf);
 }
 
 function patchIndexHtml(htmlContent, ds) {
-    const marker = 'const EMBEDDED = ';
-    const startIdx = htmlContent.indexOf(marker);
-    if (startIdx < 0) throw new Error('Could not find "const EMBEDDED = " in index.html — has the file structure changed?');
-    const jsonStart = startIdx + marker.length;
-    // The EMBEDDED object is a single line ending in "};\n" — find that exact terminator.
+  const marker = 'const EMBEDDED = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) throw new Error('Could not find "const EMBEDDED = " in index.html — has the file structure changed?');
+  const jsonStart = startIdx + marker.length;
+  // The EMBEDDED object is a single line ending in "};\n" — find that exact terminator.
   const endMarker = '};\n';
-    const endIdx = htmlContent.indexOf(endMarker, jsonStart);
-    if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED object in index.html');
-    const before = htmlContent.slice(0, jsonStart);
-    // endIdx points at the "}" that closes the OLD json object — skip past just that one
+  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) throw new Error('Could not find the end of the EMBEDDED object in index.html');
+  const before = htmlContent.slice(0, jsonStart);
+  // endIdx points at the "}" that closes the OLD json object — skip past just that one
   // character so we don't double up with the "}" that JSON.stringify(ds) already provides.
   const after = htmlContent.slice(endIdx + 1); // ";\n..." (statement terminator + rest of file)
   const newJson = JSON.stringify(ds);
-    return before + newJson + after;
+  return before + newJson + after;
 }
 
 // The whole workbook (every sheet) is published inside index.html as a gzip+base64 string, so the dashboard can
 // fetch any workbook column into a custom table column. A hash of the content decides whether it changed, so an
 // unchanged workbook never rewrites the file (gzip output alone could differ between runs).
 function patchWorkbook(htmlContent, wb) {
-    if (!wb) return htmlContent;
-    const json = JSON.stringify(wb);
-    const hash = crypto.createHash('sha1').update(json).digest('hex').slice(0, 16);
-    const gm = 'const WB_GZ = "', hm = 'const WB_HASH = "';
-    const gi = htmlContent.indexOf(gm), hi = htmlContent.indexOf(hm);
-    if (gi < 0 || hi < 0) { console.log('index.html has no WB_GZ / WB_HASH markers - skipping the workbook store (non-fatal).'); return htmlContent; }
-    const hEnd = htmlContent.indexOf('";', hi + hm.length);
-    if (htmlContent.slice(hi + hm.length, hEnd) === hash) return htmlContent;
-    const gz = zlib.gzipSync(Buffer.from(json, 'utf-8'), { level: 9 }).toString('base64');
-    const gEnd = htmlContent.indexOf('";', gi + gm.length);
-    let out = htmlContent.slice(0, gi + gm.length) + gz + htmlContent.slice(gEnd);
-    const hi2 = out.indexOf(hm), hEnd2 = out.indexOf('";', hi2 + hm.length);
-    out = out.slice(0, hi2 + hm.length) + hash + out.slice(hEnd2);
-    console.log('Workbook store updated:', wb.sheets.length, 'sheets,', (json.length / 1024).toFixed(0), 'KB raw,', (gz.length / 1024).toFixed(0), 'KB compressed.' + (wb.skipped && wb.skipped.length ? ' Not included: ' + wb.skipped.join('; ') : ''));
-    return out;
+  if (!wb) return htmlContent;
+  const json = JSON.stringify(wb);
+  const hash = crypto.createHash('sha1').update(json).digest('hex').slice(0, 16);
+  const gm = 'const WB_GZ = "', hm = 'const WB_HASH = "';
+  const gi = htmlContent.indexOf(gm), hi = htmlContent.indexOf(hm);
+  if (gi < 0 || hi < 0) { console.log('index.html has no WB_GZ / WB_HASH markers - skipping the workbook store (non-fatal).'); return htmlContent; }
+  const hEnd = htmlContent.indexOf('";', hi + hm.length);
+  if (htmlContent.slice(hi + hm.length, hEnd) === hash) return htmlContent;
+  const gz = zlib.gzipSync(Buffer.from(json, 'utf-8'), { level: 9 }).toString('base64');
+  const gEnd = htmlContent.indexOf('";', gi + gm.length);
+  let out = htmlContent.slice(0, gi + gm.length) + gz + htmlContent.slice(gEnd);
+  const hi2 = out.indexOf(hm), hEnd2 = out.indexOf('";', hi2 + hm.length);
+  out = out.slice(0, hi2 + hm.length) + hash + out.slice(hEnd2);
+  console.log('Workbook store updated:', wb.sheets.length, 'sheets,', (json.length / 1024).toFixed(0), 'KB raw,', (gz.length / 1024).toFixed(0), 'KB compressed.' + (wb.skipped && wb.skipped.length ? ' Not included: ' + wb.skipped.join('; ') : ''));
+  return out;
 }
 
 // The "Data source" label near the top of the page is a hardcoded <b id="srcName"> in the
 // static HTML — it's NOT driven by EMBEDDED/DS, so it never reflects freshness on its own
 // for a first-time visitor. Patch it too, every sync, so the visible label matches reality.
 function patchSourceLabel(htmlContent) {
-    const re = /(<b id="srcName">)[^<]*(<\/b>)/;
-    if (!re.test(htmlContent)) throw new Error('Could not find <b id="srcName"> in index.html — has the file structure changed?');
-    const stamp = new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC';
-    const label = `Live workbook (auto-synced) · ${stamp}`;
-    return htmlContent.replace(re, `$1${label}$2`);
+  const re = /(<b id="srcName">)[^<]*(<\/b>)/;
+  if (!re.test(htmlContent)) throw new Error('Could not find <b id="srcName"> in index.html — has the file structure changed?');
+  const stamp = new Date().toLocaleString('en-US', { timeZone: 'UTC' }) + ' UTC';
+  const label = `Live workbook (auto-synced) · ${stamp}`;
+  return htmlContent.replace(re, `$1${label}$2`);
 }
 
 // HQ Issues lives in a separate top-level `let ISSUES=[];` (not part of EMBEDDED), because
@@ -120,28 +120,28 @@ function patchSourceLabel(htmlContent) {
 // JSON string/escape state and bracket depth, exactly like patchIndexHtml does for EMBEDDED,
 // so we find the actual matching close-bracket regardless of what's inside.
 function patchIssues(htmlContent, issues) {
-    const marker = 'let ISSUES=';
-    const start = htmlContent.indexOf(marker);
-    if (start < 0) throw new Error('Could not find "let ISSUES=" in index.html — has the file structure changed?');
-    const arrStart = start + marker.length; // position of the opening '['
+  const marker = 'let ISSUES=';
+  const start = htmlContent.indexOf(marker);
+  if (start < 0) throw new Error('Could not find "let ISSUES=" in index.html — has the file structure changed?');
+  const arrStart = start + marker.length; // position of the opening '['
   if (htmlContent[arrStart] !== '[') throw new Error('Expected "[" right after "let ISSUES=" — has the file structure changed?');
-    let depth = 0, inStr = false, esc = false, i = arrStart;
-    for (; i < htmlContent.length; i++) {
-          const ch = htmlContent[i];
-          if (inStr) {
-                  if (esc) esc = false;
-                  else if (ch === '\\') esc = true;
-                  else if (ch === '"') inStr = false;
-                  continue;
-          }
-          if (ch === '"') inStr = true;
-          else if (ch === '[') depth++;
-          else if (ch === ']') { depth--; if (depth === 0) { i++; break; } }
+  let depth = 0, inStr = false, esc = false, i = arrStart;
+  for (; i < htmlContent.length; i++) {
+    const ch = htmlContent[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
     }
-    // i is now just past the matching ']'; expect a ';' right after
+    if (ch === '"') inStr = true;
+    else if (ch === '[') depth++;
+    else if (ch === ']') { depth--; if (depth === 0) { i++; break; } }
+  }
+  // i is now just past the matching ']'; expect a ';' right after
   if (htmlContent[i] !== ';') throw new Error('Could not find closing "];" for ISSUES array — has the file structure changed?');
-    const before = htmlContent.slice(0, arrStart);
-    const after = htmlContent.slice(i); // starts with ';'
+  const before = htmlContent.slice(0, arrStart);
+  const after = htmlContent.slice(i); // starts with ';'
   return before + JSON.stringify(issues) + after;
 }
 
@@ -150,14 +150,14 @@ function patchIssues(htmlContent, issues) {
 // for hand-added / sheet-imported requests there. Kept identical to the
 // mapping in sync-tickets.js.
 const HQ_STATUS_MAP = {
-    'Backlog': 'Awaiting approval',
-    'Open': 'Awaiting approval',
-    'Waiting Approval': 'Awaiting approval',
-    'In Progress': 'In progress',
-    'In Review': 'In progress',
-    'Blocked': 'In progress',
-    'Resolved': 'Done',
-    'Closed': 'Done',
+  'Backlog': 'Awaiting approval',
+  'Open': 'Awaiting approval',
+  'Waiting Approval': 'Awaiting approval',
+  'In Progress': 'In progress',
+  'In Review': 'In progress',
+  'Blocked': 'In progress',
+  'Resolved': 'Done',
+  'Closed': 'Done',
 };
 
 // Reads the ticket board's already-committed EMBEDDED_TICKETS straight out of the
@@ -165,119 +165,119 @@ const HQ_STATUS_MAP = {
 // index.html's mergeTicketIssues() expects. Returns null (never throws) if the file
 // or marker isn't there yet, so a ticket-board hiccup never fails the dashboard sync.
 function readTicketIssuesFromBoard(boardHtmlPath) {
-    let tickets = null;
-    // Preferred: the live snapshot from the data branch.
+  let tickets = null;
+  // Preferred: the live snapshot from the data branch.
   try {
-        if (fs.existsSync(TICKET_DATA_JSON_PATH)) {
-                const d = JSON.parse(fs.readFileSync(TICKET_DATA_JSON_PATH, 'utf-8'));
-                if (d && Array.isArray(d.tickets)) tickets = d.tickets;
-        }
+    if (fs.existsSync(TICKET_DATA_JSON_PATH)) {
+      const d = JSON.parse(fs.readFileSync(TICKET_DATA_JSON_PATH, 'utf-8'));
+      if (d && Array.isArray(d.tickets)) tickets = d.tickets;
+    }
   } catch (e) { tickets = null; }
-    // Fallback: the copy baked into ticket-board.html (older, but better than nothing).
+  // Fallback: the copy baked into ticket-board.html (older, but better than nothing).
   if (!tickets) {
-        if (!fs.existsSync(boardHtmlPath)) return null;
-        const html = fs.readFileSync(boardHtmlPath, 'utf-8');
-        const marker = 'const EMBEDDED_TICKETS = ';
-        const startIdx = html.indexOf(marker);
-        if (startIdx < 0) return null;
-        const jsonStart = startIdx + marker.length;
-        const endMarker = '];\n';
-        const endIdx = html.indexOf(endMarker, jsonStart);
-        if (endIdx < 0) return null;
-        try {
-                tickets = JSON.parse(html.slice(jsonStart, endIdx + 1));
-        } catch (e) {
-                return null;
-        }
+    if (!fs.existsSync(boardHtmlPath)) return null;
+    const html = fs.readFileSync(boardHtmlPath, 'utf-8');
+    const marker = 'const EMBEDDED_TICKETS = ';
+    const startIdx = html.indexOf(marker);
+    if (startIdx < 0) return null;
+    const jsonStart = startIdx + marker.length;
+    const endMarker = '];\n';
+    const endIdx = html.indexOf(endMarker, jsonStart);
+    if (endIdx < 0) return null;
+    try {
+      tickets = JSON.parse(html.slice(jsonStart, endIdx + 1));
+    } catch (e) {
+      return null;
+    }
   }
-    return tickets.map(t => ({
-          ref: t['Ticket ID'],
-          title: t['Title'] || '',
-          category: t['Category'] || 'General',
-          loc: t['Site / Location'] || 'HQ',
-          rawStatus: t['Status'] || '',
-          status: HQ_STATUS_MAP[t['Status']] || 'Awaiting approval',
-          priority: t['Priority'] || '',
-          requesterName: t['Requester Name'] || '',
-          requesterEmail: t['Requester Email'] || '',
-          date: t['Date Submitted'] || '',
-    }));
+  return tickets.map(t => ({
+    ref: t['Ticket ID'],
+    title: t['Title'] || '',
+    category: t['Category'] || 'General',
+    loc: t['Site / Location'] || 'HQ',
+    rawStatus: t['Status'] || '',
+    status: HQ_STATUS_MAP[t['Status']] || 'Awaiting approval',
+    priority: t['Priority'] || '',
+    requesterName: t['Requester Name'] || '',
+    requesterEmail: t['Requester Email'] || '',
+    date: t['Date Submitted'] || '',
+  }));
 }
 
 function patchTicketIssues(htmlContent, ticketIssues) {
-    const marker = 'const TICKET_ISSUES = ';
-    const startIdx = htmlContent.indexOf(marker);
-    if (startIdx < 0) return null; // dashboard hasn't been updated to expect this yet — skip, don't fail the sync
+  const marker = 'const TICKET_ISSUES = ';
+  const startIdx = htmlContent.indexOf(marker);
+  if (startIdx < 0) return null; // dashboard hasn't been updated to expect this yet — skip, don't fail the sync
   const jsonStart = startIdx + marker.length;
-    const endMarker = '];\n';
-    const endIdx = htmlContent.indexOf(endMarker, jsonStart);
-    if (endIdx < 0) return null;
-    const before = htmlContent.slice(0, jsonStart);
-    const after = htmlContent.slice(endIdx + 1);
-    const newJson = JSON.stringify(ticketIssues);
-    return before + newJson + after;
+  const endMarker = '];\n';
+  const endIdx = htmlContent.indexOf(endMarker, jsonStart);
+  if (endIdx < 0) return null;
+  const before = htmlContent.slice(0, jsonStart);
+  const after = htmlContent.slice(endIdx + 1);
+  const newJson = JSON.stringify(ticketIssues);
+  return before + newJson + after;
 }
 
 async function main() {
-    if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
-          throw new Error('Missing AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET environment variables.');
-    }
-    console.log('Authenticating with Microsoft Graph (app-only)...');
-    const token = await getAppToken();
-    console.log('Got token. Downloading workbook from', FILE_PATH, 'for', USER_UPN, '...');
-    const buf = await downloadWorkbook(token);
-    console.log(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB. Extracting...`);
-    const { DS, issues, missing, sheetNames, WB } = extractAll(buf);
-    if (missing.length) console.warn('WARNING: sheets not found in workbook:', missing.join(', '));
-    console.log('Extracted sheets:', Object.keys(DS).map(k => `${k}(${DS[k].rows.length})`).join(', '));
-    console.log('Extracted HQ issues:', issues.length);
+  if (!TENANT_ID || !CLIENT_ID || !CLIENT_SECRET) {
+    throw new Error('Missing AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET environment variables.');
+  }
+  console.log('Authenticating with Microsoft Graph (app-only)...');
+  const token = await getAppToken();
+  console.log('Got token. Downloading workbook from', FILE_PATH, 'for', USER_UPN, '...');
+  const buf = await downloadWorkbook(token);
+  console.log(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB. Extracting...`);
+  const { DS, issues, missing, sheetNames, WB } = extractAll(buf);
+  if (missing.length) console.warn('WARNING: sheets not found in workbook:', missing.join(', '));
+  console.log('Extracted sheets:', Object.keys(DS).map(k => `${k}(${DS[k].rows.length})`).join(', '));
+  console.log('Extracted HQ issues:', issues.length);
 
   console.log('Reading', INDEX_HTML_PATH, '...');
-    const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
-    let patched = patchIndexHtml(html, DS);
-    patched = patchIssues(patched, issues);
-    try { patched = patchWorkbook(patched, WB); } catch (err) { console.log('Workbook store step failed (non-fatal):', err.message); }
+  const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
+  let patched = patchIndexHtml(html, DS);
+  patched = patchIssues(patched, issues);
+  try { patched = patchWorkbook(patched, WB); } catch (err) { console.log('Workbook store step failed (non-fatal):', err.message); }
 
   try {
-        const ticketIssues = readTicketIssuesFromBoard(TICKET_BOARD_HTML_PATH);
-        if (ticketIssues == null) {
-                console.log('No ticket-board.html / EMBEDDED_TICKETS found yet — skipping ticket mirror (non-fatal).');
-        } else {
-                const withTickets = patchTicketIssues(patched, ticketIssues);
-                if (withTickets == null) {
-                          console.log('index.html has no TICKET_ISSUES marker — skipping ticket mirror (non-fatal).');
-                } else {
-                          patched = withTickets;
-                          console.log('Mirrored', ticketIssues.length, 'tickets into TICKET_ISSUES (HQ Issues & requests tab).');
-                }
-        }
+    const ticketIssues = readTicketIssuesFromBoard(TICKET_BOARD_HTML_PATH);
+    if (ticketIssues == null) {
+      console.log('No ticket-board.html / EMBEDDED_TICKETS found yet — skipping ticket mirror (non-fatal).');
+    } else {
+      const withTickets = patchTicketIssues(patched, ticketIssues);
+      if (withTickets == null) {
+        console.log('index.html has no TICKET_ISSUES marker — skipping ticket mirror (non-fatal).');
+      } else {
+        patched = withTickets;
+        console.log('Mirrored', ticketIssues.length, 'tickets into TICKET_ISSUES (HQ Issues & requests tab).');
+      }
+    }
   } catch (err) {
-        // Never let a ticket-mirroring problem fail the main dashboard sync.
-      console.log('Ticket mirror step failed (non-fatal):', err.message);
+    // Never let a ticket-mirroring problem fail the main dashboard sync.
+    console.log('Ticket mirror step failed (non-fatal):', err.message);
   }
 
   // Only touch the file when the DATA changed: a timestamp-only change made a commit and a
   // GitHub Pages rebuild every minute, which jammed the Pages queue so the live site went stale.
   // The label therefore shows when the data last changed.
   const SRC_RE = /(<b id="srcName">)[^<]*(<\/b>)/;
-    // extract.js stamps every HQ issue with a freshly generated random id on each run, so those ids
+  // extract.js stamps every HQ issue with a freshly generated random id on each run, so those ids
   // are ignored when deciding whether anything really changed.
   const ID_RE = /"id":"c[a-z0-9]{6,14}"/g;
-    const norm = (x) => x.replace(SRC_RE, '$1$2').replace(ID_RE, '"id":""');
-    if (norm(patched) === norm(html)) {
-          console.log('No data change - index.html left untouched.');
-          return;
-    }
-    patched = patchSourceLabel(patched);
-    fs.writeFileSync(INDEX_HTML_PATH, patched, 'utf-8');
-    console.log('index.html updated with fresh data, issues, tickets, and current label.');
+  const norm = (x) => x.replace(SRC_RE, '$1$2').replace(ID_RE, '"id":""');
+  if (norm(patched) === norm(html)) {
+    console.log('No data change - index.html left untouched.');
+    return;
+  }
+  patched = patchSourceLabel(patched);
+  fs.writeFileSync(INDEX_HTML_PATH, patched, 'utf-8');
+  console.log('index.html updated with fresh data, issues, tickets, and current label.');
 }
 
 module.exports = { patchWorkbook, patchIndexHtml, patchSourceLabel, patchIssues, readTicketIssuesFromBoard, patchTicketIssues, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
-    main().catch(err => {
-          console.error('Sync failed:', err.message);
-          process.exit(1);
-    });
+  main().catch(err => {
+    console.error('Sync failed:', err.message);
+    process.exit(1);
+  });
 }
