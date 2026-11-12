@@ -434,6 +434,31 @@ body.lite .card{transition:none!important}
 
 /* ---- cafeteria utensils / 21-entry menu ---- */
 .nav a{height:37px;margin:0 0 1px}
+
+/* ---- custom columns from the workbook ---- */
+.cc-modal{max-width:640px;width:calc(100vw - 32px);padding:0;overflow:hidden}
+.cc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 20px}
+.cc-head h2{margin:0;font-size:18px;color:#fff}
+.cc-sub{font-size:12px;color:rgba(255,255,255,.75);margin-top:4px}
+.cc-x{background:none;border:0;color:#fff;font-size:24px;line-height:1;cursor:pointer;padding:0 4px}
+.cc-body{padding:18px 20px 20px;display:flex;flex-direction:column;gap:12px}
+.cc-l{display:block;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
+.cc-body .urlin,.cc-body .sel{width:100%;box-sizing:border-box}
+.cc-hint{font-size:12.5px;color:var(--ink-soft);min-height:17px}
+.cc-mode{display:flex;gap:20px;flex-wrap:wrap;font-size:13px}
+.cc-mode label{display:flex;gap:7px;align-items:center;cursor:pointer}
+.cc-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+#ccWb{display:flex;flex-direction:column;gap:12px}
+.cc-note{font-size:12px;color:var(--muted)}
+.cc-prev{border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:12px;max-height:190px;overflow:auto;background:rgba(255,255,255,.03)}
+.cc-prev-h{color:var(--muted);font-size:11px;letter-spacing:.06em;margin-bottom:4px}
+.cc-prev div:not(.cc-prev-h){display:flex;justify-content:space-between;gap:12px;padding:3px 0;border-bottom:1px solid rgba(160,190,210,.08)}
+.cc-prev b{color:var(--solar);font-weight:600}
+.cc-act{display:flex;justify-content:flex-end;gap:10px;margin-top:4px}
+.cc-link{background:none;border:0;color:var(--solar);cursor:pointer;font-size:12px;padding:0 4px;opacity:.85}
+.cc-link:hover{opacity:1}
+td.cc-linked{font-size:12.5px;background:rgba(79,209,197,.05);white-space:nowrap}
+@media(max-width:600px){.cc-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body id="artifacts-component-root-html">
@@ -521,7 +546,7 @@ function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').r
 function kpi(lab,val,unit,meta,cls){ return `<div class="kpi ${cls||''}"><div class="lab">${lab}</div><div class="val">${val}${unit?`<span class="u">${unit}</span>`:''}</div>${meta?`<div class="meta">${meta}</div>`:''}</div>`; }
 /* editable cell: maps to DS[k].rows[r][c] */
 function cell(k,r,c,val,o){ o=o||{}; const disp=(val===''||val==null)?'\u2014':val;
-  if(!EDIT) return `<td class="${o.num?'num':''}">${o.html?val:esc(disp)}</td>`;
+  if(!EDIT) return `<td class="${o.num?'num':''}" data-k="${k}" data-r="${r}">${o.html?val:esc(disp)}</td>`;
   return `<td class="${o.num?'num':''}"><input class="edcell ${o.num?'rt':''}" data-k="${k}" data-r="${r}" data-c="${c}" value="${esc(val==null?'':val)}"></td>`;
 }
 /* measuring units: use given unit, else infer from item name */
@@ -1656,8 +1681,10 @@ function ccSetValue(key,rowKey,colId,val){
   wrap.addEventListener('click',e=>{
     const addBtn=e.target.closest('.cc-add-btn');
     if(addBtn){ const key=addBtn.dataset.key;
-      const name=window.prompt('Name this column:',''); if(name&&name.trim()) ccAddColumn(key,name);
+      ccDialog(key,addBtn.closest('table'),null);
       return; }
+    const lkBtn=e.target.closest('.cc-link');
+    if(lkBtn){ ccDialog(lkBtn.dataset.key,lkBtn.closest('table'),lkBtn.dataset.colid); return; }
     const rmBtn=e.target.closest('.cc-rm');
     if(rmBtn){ if(window.confirm('Remove this column? Its values will be lost.')) ccRemoveColumn(rmBtn.dataset.key,rmBtn.dataset.colid); return; }
   });
@@ -1671,6 +1698,193 @@ function ccSetValue(key,rowKey,colId,val){
   });
   CC_OBSERVER.observe(wrap,{childList:true,subtree:true});
 })();
+
+
+/* ===================== Custom columns that fetch from the workbook ===================== */
+/* The sync publishes every workbook sheet below (compressed). A custom column can take its values from any sheet:
+   - from this table's own sheet: each row gets the value from its own workbook row;
+   - from any other sheet: rows are matched on a column you choose (like a VLOOKUP).
+   Typing a column name that exists in the workbook links it automatically. */
+const WB_HASH = "";
+const WB_GZ = "";
+const WB_CUR={hash:WB_HASH,gz:WB_GZ};
+let WBD=null, WBP=null, _wbIdx={};
+function wbBytes(b){ const bin=atob(b); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+function wbLoad(){
+  if(WBD) return Promise.resolve(WBD); if(WBP) return WBP;
+  WBP=(async()=>{ try{ if(!WB_CUR.gz||typeof DecompressionStream==='undefined') return null;
+      const st=new Blob([wbBytes(WB_CUR.gz)]).stream().pipeThrough(new DecompressionStream('gzip'));
+      WBD=JSON.parse(await new Response(st).text()); _wbIdx={}; }catch(e){ WBD=null; } return WBD; })();
+  return WBP;
+}
+function wbSetStore(hash,gz){ if(hash===WB_CUR.hash) return; WB_CUR.hash=hash; WB_CUR.gz=gz||''; WBD=null; WBP=null; _wbIdx={}; wbLoad().then(()=>{ try{ injectCustomColumns(); }catch(e){} }); }
+function wbSheet(n){ return WBD&&WBD.sheets?WBD.sheets.find(s=>s.n===n):null; }
+const wbNameKey=s=>String(s==null?'':s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'');
+const _WBMON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+/* match keys for a value as shown in a table or stored in the workbook (text, number, date) */
+function wbKeys(v){
+  if(v==null) return []; const s=String(v).replace(/\u00a0/g,' ').trim(); if(!s||s==='\u2014'||s==='-') return [];
+  const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})/);
+  if(iso){ let d=new Date(s); if(+iso[4]>=21) d=new Date(d.getTime()+3*3600e3); return isNaN(d)?[]:['D'+d.toISOString().slice(0,10)]; }
+  const t=s.toLowerCase().replace(/\s+/g,' '), o=['T'+t];
+  const n=t.replace(/,/g,''); if(/^-?\d*\.?\d+$/.test(n)) o.push('N'+parseFloat(n));
+  const dm=t.match(/^(\d{1,2}) ([a-z]{3})[a-z]* (\d{4})$/); if(dm&&_WBMON[dm[2]]) o.push('D'+dm[3]+'-'+String(_WBMON[dm[2]]).padStart(2,'0')+'-'+dm[1].padStart(2,'0'));
+  return o;
+}
+function wbStoreKeys(v){
+  if(v==null||v==='') return [];
+  if(typeof v==='number'){ const o=['N'+v]; if(v>20000&&v<90000) o.push('D'+new Date(Date.UTC(1899,11,30)+Math.floor(v)*864e5).toISOString().slice(0,10)); return o; }
+  return wbKeys(v);
+}
+function wbColIdx(sh,name,idx){ if(sh&&name!=null&&name!==''){ let i=sh.h.indexOf(name); if(i>=0) return i; const k=wbNameKey(name); i=sh.h.findIndex(h=>wbNameKey(h)===k); if(i>=0) return i; } return idx==null?-1:+idx; }
+function wbIndex(sh,c){ const id=sh.n+'|'+c; if(_wbIdx[id]) return _wbIdx[id]; const m=new Map();
+  for(let i=(sh.hr||0)+1;i<sh.r.length;i++) wbStoreKeys((sh.r[i]||[])[c]).forEach(k=>{ if(!m.has(k)) m.set(k,i); });
+  return (_wbIdx[id]=m); }
+function wbFmt(v,h){
+  if(v==null||v==='') return '';
+  if(typeof v==='number'){ if(/date|time|\u062a\u0627\u0631\u064a\u062e/i.test(h||'')&&v>20000&&v<90000) return fmtDate(new Date(Date.UTC(1899,11,30)+Math.floor(v)*864e5)); return Number.isInteger(v)?fmt(v):String(Math.round(v*100)/100); }
+  const s=String(v); const k=wbKeys(s); if(/^\d{4}-\d{2}-\d{2}T/.test(s)&&k.length) return fmtDate(new Date(k[0].slice(1)+'T00:00:00Z'));
+  return s;
+}
+function wbFind(name,own){ const k=wbNameKey(name); if(!k||!WBD) return []; const hits=[];
+  WBD.sheets.forEach(s=>s.h.forEach((h,i)=>{ if(wbNameKey(h)===k) hits.push({sheet:s.n,col:i,colName:h,own:s.n===own}); }));
+  return hits.sort((a,b)=>(b.own?1:0)-(a.own?1:0)); }
+/* a table's own columns, and the workbook sheet its rows come from (when they carry row positions) */
+function ccTableInfo(table){
+  const headers=[...table.querySelectorAll('thead tr th')].filter(th=>!th.dataset.cc).map(th=>th.textContent.trim());
+  const a=table.querySelector('tbody [data-k][data-r]'); const ds=a&&DS[a.dataset.k];
+  return {headers,own:(ds&&ds.sheet&&Array.isArray(ds.rowsrc))?ds.sheet:null};
+}
+function ccCellAt(tr,i){ return [...tr.children].filter(td=>!td.dataset.cc)[i]||null; }
+/* value for one table row; null while the workbook is still loading, '' when nothing matches */
+function ccLinkedValue(src,tr,info){
+  if(!WBD) return null; const sh=wbSheet(src.sheet); if(!sh) return '';
+  const c=wbColIdx(sh,src.colName,src.col); if(c<0) return ''; let ri=-1;
+  if(src.mode==='row'){ const a=tr.querySelector('[data-k][data-r]'); const ds=a&&DS[a.dataset.k]; if(!ds||ds.sheet!==src.sheet||!ds.rowsrc) return ''; ri=ds.rowsrc[+a.dataset.r]; }
+  else { let mi=info.headers.indexOf(src.mtName); if(mi<0) mi=+src.mt; const td=ccCellAt(tr,mi); if(!td) return '';
+    const idx=wbIndex(sh,wbColIdx(sh,src.msName,src.ms)); for(const k of wbKeys(td.textContent)){ if(idx.has(k)){ ri=idx.get(k); break; } } }
+  if(ri==null||ri<0) return ''; return wbFmt((sh.r[ri]||[])[c],sh.h[c]);
+}
+function ccSrcLabel(src){ return src.sheet+' \u203a '+(src.colName||('column '+(+src.col+1)))+(src.mode==='match'?' (matched on '+(src.mtName||'')+' = '+(src.msName||'')+')':''); }
+
+injectCustomColumns=function(){
+  const wrap=document.getElementById('wrap'); if(!wrap) return;
+  if(CC_OBSERVER) CC_OBSERVER.disconnect(); let needLoad=false;
+  try{
+    [...wrap.querySelectorAll('table')].forEach((table,tIdx)=>{
+      const key=currentPage+':'+tIdx;
+      const thead=table.querySelector('thead tr'), tbody=table.querySelector('tbody');
+      if(!thead||!tbody) return;
+      thead.querySelectorAll('[data-cc]').forEach(e=>e.remove());
+      const def=CUSTOMCOLS[key]; const cols=(def&&def.cols)||[];
+      const info=cols.some(c=>c.src)?ccTableInfo(table):null; if(info&&!WBD) needLoad=true;
+      cols.forEach(col=>{
+        const th=document.createElement('th'); th.dataset.cc='1'; th.className='cc-th'+(col.src?' cc-th-wb':'');
+        th.innerHTML='<span class="cc-th-name">'+esc(col.name)+'</span>'+
+          '<button class="cc-link" data-key="'+esc(key)+'" data-colid="'+esc(col.id)+'" title="'+(col.src?'From the workbook: '+esc(ccSrcLabel(col.src))+'. Click to change.':'Typed by hand. Click to fetch it from the workbook instead.')+'">'+(col.src?'\u21c4':'\u2699')+'</button>'+
+          '<button class="cc-rm" data-key="'+esc(key)+'" data-colid="'+esc(col.id)+'" title="Remove column">\u00d7</button>';
+        thead.appendChild(th);
+      });
+      const addTh=document.createElement('th'); addTh.dataset.cc='1'; addTh.className='cc-add-th';
+      addTh.innerHTML='<button class="cc-add-btn" data-key="'+esc(key)+'" title="Add a column">+ Column</button>';
+      thead.appendChild(addTh);
+      [...tbody.querySelectorAll('tr')].forEach(tr=>{
+        tr.querySelectorAll('[data-cc]').forEach(e=>e.remove());
+        if(ccIsPlaceholderRow(tr)){ const sp=document.createElement('td'); sp.dataset.cc='1'; tr.appendChild(sp); return; }
+        const rk=ccRowKey(tr);
+        cols.forEach(col=>{
+          const td=document.createElement('td'); td.dataset.cc='1';
+          if(col.src){ td.className='cc-td cc-linked'; const v=ccLinkedValue(col.src,tr,info); td.textContent=v==null?'\u2026':(v===''?'\u2014':v); }
+          else { td.className='cc-td'; const val=(def.rows[rk]&&def.rows[rk][col.id])||'';
+            td.innerHTML='<input class="cc-input" data-key="'+esc(key)+'" data-rowkey="'+esc(rk)+'" data-colid="'+esc(col.id)+'" value="'+esc(val)+'" placeholder="\u2014">'; }
+          tr.appendChild(td);
+        });
+        const sp=document.createElement('td'); sp.dataset.cc='1'; tr.appendChild(sp);
+      });
+    });
+  } finally { if(CC_OBSERVER) CC_OBSERVER.observe(wrap,{childList:true,subtree:true}); }
+  if(needLoad&&WB_CUR.gz&&!WBP) wbLoad().then(d=>{ if(d) injectCustomColumns(); });
+};
+ccAddColumn=function(key,name,src){
+  if(!name||!name.trim()) return;
+  if(!CUSTOMCOLS[key]) CUSTOMCOLS[key]={cols:[],rows:{}};
+  const id='c'+Date.now()+Math.random().toString(36).slice(2,6);
+  CUSTOMCOLS[key].cols.push(src?{id,name:name.trim(),src}:{id,name:name.trim()});
+  saveState(); injectCustomColumns();
+};
+function ccUpdateColumn(key,colId,name,src){
+  const def=CUSTOMCOLS[key]; if(!def) return; const col=def.cols.find(c=>c.id===colId); if(!col) return;
+  col.name=name.trim()||col.name; if(src) col.src=src; else delete col.src;
+  saveState(); injectCustomColumns();
+}
+/* the add / edit dialog */
+async function ccDialog(key,table,colId){
+  await wbLoad();
+  const def=CUSTOMCOLS[key]||{cols:[],rows:{}}; const col=colId?def.cols.find(c=>c.id===colId):null;
+  const info=ccTableInfo(table); const own=info.own;
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal cc-modal" role="dialog" aria-label="${col?'Edit column':'Add a column'}">
+    <div class="modal-h cc-head"><div><h2>${col?'Edit column':'Add a column'}</h2><div class="cc-sub">${own?'This table comes from the <b>'+esc(own)+'</b> sheet.':'Type a workbook column name, or pick where the values come from.'}</div></div><button class="cc-x" id="ccX" title="Close">\u00d7</button></div>
+    <div class="cc-body">
+      <div><label class="cc-l" for="ccName">Column name</label><input id="ccName" class="urlin" autocomplete="off" placeholder="e.g. cost center" value="${esc(col?col.name:'')}"></div>
+      <div class="cc-hint" id="ccHint"></div>
+      <div class="cc-mode"><label><input type="radio" name="ccm" value="wb"> Fetch the values from the workbook</label><label><input type="radio" name="ccm" value="manual"> I\u2019ll type the values myself</label></div>
+      <div id="ccWb">
+        <div class="cc-row"><div><label class="cc-l" for="ccSheet">Sheet</label><select id="ccSheet" class="sel"></select></div><div><label class="cc-l" for="ccCol">Column to show</label><select id="ccCol" class="sel"></select></div></div>
+        <div id="ccMatch" class="cc-row"><div><label class="cc-l" for="ccMt">Match rows where this table\u2019s</label><select id="ccMt" class="sel"></select></div><div><label class="cc-l" for="ccMs">equals the sheet\u2019s</label><select id="ccMs" class="sel"></select></div></div>
+        <div class="cc-note" id="ccRowNote"></div>
+        <div class="cc-prev" id="ccPrev"></div>
+      </div>
+      <div class="cc-act"><button class="btn" id="ccCancel">Cancel</button><button class="btn solar" id="ccSave">${col?'Save':'Add column'}</button></div>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const $=s=>bg.querySelector(s); const close=()=>{ bg.remove(); document.removeEventListener('keydown',onKey); };
+  const onKey=e=>{ if(e.key==='Escape') close(); if(e.key==='Enter'&&e.target&&e.target.id==='ccName') $('#ccSave').click(); };
+  document.addEventListener('keydown',onKey);
+  $('#ccX').onclick=close; $('#ccCancel').onclick=close; bg.addEventListener('mousedown',e=>{ if(e.target===bg) close(); });
+  const sheets=WBD&&WBD.sheets?WBD.sheets.slice():[];
+  sheets.sort((a,b)=>(b.n===own?1:0)-(a.n===own?1:0));
+  $('#ccSheet').innerHTML=sheets.map(s=>`<option value="${esc(s.n)}">${esc(s.n)}${s.n===own?' \u2014 this table\u2019s sheet':''}</option>`).join('');
+  $('#ccMt').innerHTML=info.headers.map((h,i)=>`<option value="${i}">${esc(h||('Column '+(i+1)))}</option>`).join('');
+  let mode='manual', touched=false;
+  const setMode=m=>{ mode=m; bg.querySelectorAll('input[name=ccm]').forEach(r=>{ r.checked=(r.value===m); }); $('#ccWb').style.display=(m==='wb'&&sheets.length)?'':'none'; };
+  const fillCols=()=>{ const sh=wbSheet($('#ccSheet').value); const o=sh?sh.h.map((h,i)=>`<option value="${i}">${esc(h||('Column '+(i+1)))}</option>`).join(''):''; $('#ccCol').innerHTML=o; $('#ccMs').innerHTML=o; };
+  const rowMode=()=>!!(own&&$('#ccSheet').value===own);
+  const guessMatch=()=>{ const sh=wbSheet($('#ccSheet').value); if(!sh) return; const c=+$('#ccCol').value;
+    for(let i=0;i<info.headers.length;i++){ const k=wbNameKey(info.headers[i]); if(!k) continue; const j=sh.h.findIndex((h,jj)=>jj!==c&&wbNameKey(h)===k); if(j>=0){ $('#ccMt').value=String(i); $('#ccMs').value=String(j); return; } } };
+  const curSrc=()=>{ const shn=$('#ccSheet').value, sh=wbSheet(shn), c=+$('#ccCol').value; const s={sheet:shn,col:c,colName:sh?sh.h[c]:''};
+    if(rowMode()) s.mode='row'; else { s.mode='match'; s.mt=+$('#ccMt').value; s.mtName=info.headers[s.mt]||''; s.ms=+$('#ccMs').value; s.msName=sh?sh.h[s.ms]:''; } return s; };
+  const preview=()=>{
+    if(mode!=='wb'||!sheets.length){ $('#ccPrev').innerHTML=''; return; }
+    $('#ccMatch').style.display=rowMode()?'none':'';
+    $('#ccRowNote').textContent=rowMode()?'Each row takes the value from its own row in the sheet.':'Pick a column that holds the same value in both places (a name, a reference or a date).';
+    const src=curSrc(); const rows=[...table.querySelectorAll('tbody tr')].filter(tr=>!ccIsPlaceholderRow(tr));
+    let hit=0; const sample=[]; const li=src.mode==='match'?(+src.mt||0):0; rows.forEach(tr=>{ const v=ccLinkedValue(src,tr,info); if(v) hit++; if(sample.length<6) sample.push([(ccCellAt(tr,li)||{}).textContent||'',v]); });
+    $('#ccPrev').innerHTML='<div class="cc-prev-h">Preview \u2014 '+hit+' of '+rows.length+' rows get a value</div>'+sample.map(p=>'<div><span>'+esc(String(p[0]).trim().slice(0,40))+'</span><b>'+esc(p[1]||'\u2014')+'</b></div>').join('');
+  };
+  const hint=()=>{ const nm=$('#ccName').value.trim();
+    if(!WBD){ $('#ccHint').innerHTML=WB_CUR.gz?'The workbook could not be read in this browser, so values can only be typed by hand.':'The workbook data is not published yet \u2014 it arrives with the next sync. You can still add a column and type its values.'; return null; }
+    if(!nm){ $('#ccHint').textContent=''; return null; }
+    const hits=wbFind(nm,own);
+    if(!hits.length){ $('#ccHint').innerHTML='No workbook column is called <b>'+esc(nm)+'</b>. Pick one below, or type the values yourself.'; return null; }
+    const h=hits[0]; $('#ccHint').innerHTML='\u2713 Found <b>'+esc(h.colName)+'</b> in the <b>'+esc(h.sheet)+'</b> sheet'+(hits.length>1?' (and '+(hits.length-1)+' more place'+(hits.length>2?'s':'')+')':'')+'.'; return h; };
+  const applyHit=h=>{ if(!h) return; setMode('wb'); $('#ccSheet').value=h.sheet; fillCols(); $('#ccCol').value=String(h.col); if(!rowMode()) guessMatch(); preview(); };
+  if(col&&col.src){ setMode('wb'); $('#ccSheet').value=col.src.sheet; fillCols(); const sh=wbSheet(col.src.sheet); $('#ccCol').value=String(wbColIdx(sh,col.src.colName,col.src.col));
+    if(col.src.mode==='match'){ const mi=info.headers.indexOf(col.src.mtName); $('#ccMt').value=String(mi>=0?mi:col.src.mt); $('#ccMs').value=String(wbColIdx(sh,col.src.msName,col.src.ms)); } touched=true; hint(); preview(); }
+  else { fillCols(); setMode('manual'); applyHit(hint()); }
+  $('#ccName').addEventListener('input',()=>{ const h=hint(); if(!touched) { if(h) applyHit(h); else setMode('manual'); } });
+  bg.querySelectorAll('input[name=ccm]').forEach(r=>r.addEventListener('change',()=>{ setMode(r.value); touched=true; if(r.value==='wb'&&!rowMode()) guessMatch(); preview(); }));
+  $('#ccSheet').addEventListener('change',()=>{ touched=true; fillCols(); if(!rowMode()) guessMatch(); preview(); });
+  $('#ccCol').addEventListener('change',()=>{ touched=true; preview(); });
+  $('#ccMt').addEventListener('change',()=>{ touched=true; preview(); });
+  $('#ccMs').addEventListener('change',()=>{ touched=true; preview(); });
+  $('#ccSave').onclick=()=>{ const nm=$('#ccName').value.trim(); if(!nm){ $('#ccName').focus(); return; }
+    const src=(mode==='wb'&&sheets.length&&$('#ccSheet').value)?curSrc():null;
+    if(col) ccUpdateColumn(key,col.id,nm,src); else ccAddColumn(key,nm,src); close(); };
+  setTimeout(()=>$('#ccName').focus(),30);
+}
+/* start reading the workbook store early if any column already uses it */
+try{ if(Object.values(CUSTOMCOLS||{}).some(d=>d&&d.cols&&d.cols.some(c=>c.src))) wbLoad().then(d=>{ if(d) injectCustomColumns(); }); }catch(e){}
 
 /* ---------- HQ issues: read the "HQ issues" tab from the uploaded workbook ----------
    Upserts by Ref (or title+location) so re-uploading reconciles without wiping flow history;
@@ -2540,7 +2754,7 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
 })();
 
 /* ===================== Live refresh: pick up newly synced data without reloading ===================== */
-const BUILD_ID='2026-11-11-v4';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+const BUILD_ID='2026-11-12-v5';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
 (function(){
   if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
   const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],utensils:['utensils'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog'],pest:['pest']};
@@ -2555,10 +2769,11 @@ const BUILD_ID='2026-11-11-v4';   /* change this whenever the dashboard CODE cha
   function parse(html){ try{
       const emb=grab(html,'const EMB'+'EDDED = ','};\n'), tix=grab(html,'const TICKET'+'_ISSUES = ',';\n');
       const lab=html.match(new RegExp('<b id="src'+'Name">([^<]*)</b>')), bid=html.match(new RegExp("const BUILD_"+"ID='([^']+)'"));
-      return {emb:emb==null?null:JSON.parse(emb+'}'), tix:tix==null?null:JSON.parse(tix), label:lab?lab[1]:null, build:bid?bid[1]:null}; }catch(e){ return null; } }
+      return {emb:emb==null?null:JSON.parse(emb+'}'), tix:tix==null?null:JSON.parse(tix), label:lab?lab[1]:null, build:bid?bid[1]:null, wbh:grab(html,'const WB_'+'HASH = "','";'), wbg:grab(html,'const WB_'+'GZ = "','";')}; }catch(e){ return null; } }
   const busyNow=()=>EDIT||!!document.querySelector('.modal-bg')||(Date.now()-lastTouch<12000);
   function rerender(){ if(chipEl) chipEl.classList.remove('on'); try{ show(currentPage); }catch(e){} chip('Data updated just now',null,3500); }
   function applyFresh(f){
+    if(f.wbh!=null&&f.wbh!==WB_CUR.hash) wbSetStore(f.wbh,f.wbg);
     const keys=new Set(Object.keys(f.emb).concat(Object.keys(EMBEDDED)));
     const changed=[...keys].filter(k=>JSON.stringify(f.emb[k])!==JSON.stringify(EMBEDDED[k]));
     const tixChanged=!!f.tix&&JSON.stringify(f.tix)!==JSON.stringify(TICKET_ISSUES);
