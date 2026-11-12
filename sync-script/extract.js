@@ -347,6 +347,9 @@ function extractHKChecklist(wb) {
   } catch (e) { return null; }
 }
 
+// Cafeteria utensils: two header rows (month over week), one row per utensil
+function extractUtensils(wb) { const z = n => String(n).replace(/\s+/g, '').toLowerCase(); const sname = wb.SheetNames.find(n => z(n) === 'cafeteriautensils') || wb.SheetNames.find(n => z(n).startsWith('cafeteria')); if (!sname) return null; const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sname], { header: 1, raw: true, blankrows: false, defval: '' }); if (aoa.length < 2) return { headers: ['Category', 'QTY'], rows: [] }; const months = aoa[0] || [], weeks = aoa[1] || []; const width = Math.max(months.length, weeks.length, 2); const headers = ['Category', 'QTY']; let mon = ''; for (let c = 2; c < width; c++) { const m = String(months[c] == null ? '' : months[c]).trim(); if (m) mon = m; const wk = String(weeks[c] == null ? '' : weeks[c]).trim() || ('week ' + (((c - 2) % 4) + 1)); headers.push((mon ? mon + ' ' : '') + wk); } const rows = []; for (let i = 2; i < aoa.length; i++) { const r = aoa[i] || []; const name = String(r[0] == null ? '' : r[0]).trim(); if (!name) continue; const row = []; for (let c = 0; c < headers.length; c++) { const v = r[c]; row.push(v == null ? '' : v); } row[0] = name; rows.push(row); } return { headers, rows }; }
+
 function extractAll(workbookBuffer) {
   const wb = XLSX.read(workbookBuffer, { type: 'buffer', cellDates: true });
   const DS = {};
@@ -367,6 +370,8 @@ function extractAll(workbookBuffer) {
   if (attendance) DS.attendance = attendance;
   const hkchecklist = extractHKChecklist(wb);
   if (hkchecklist) DS.hkchecklist = hkchecklist;
+  const utensils = extractUtensils(wb);
+  if (utensils) DS.utensils = utensils;
   const { issues, fields } = parseHQIssuesFromWorkbook(wb);
   return { DS, issues, issueFields: fields, missing, sheetNames: wb.SheetNames };
 }
