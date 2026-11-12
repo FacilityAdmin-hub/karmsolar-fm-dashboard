@@ -1,4 +1,6 @@
-// Scheduled sync: authenticates as the app itself (no user sign-in needed),
+/
+const zlib = require('zlib');
+const crypto = require('crypto');/ Scheduled sync: authenticates as the app itself (no user sign-in needed),
 // downloads the live FM Dashboard.xlsx from Microsoft Graph, extracts it into
 // the same DS shape the browser computes, and bakes it into index.html's
 // EMBEDDED constant so every visitor sees current data with zero sign-in.
@@ -71,6 +73,27 @@ function patchIndexHtml(htmlContent, ds) {
   const after = htmlContent.slice(endIdx + 1); // ";\n..." (statement terminator + rest of file)
   const newJson = JSON.stringify(ds);
   return before + newJson + after;
+}
+
+// The whole workbook (every sheet) is published inside index.html as a gzip+base64 string, so the dashboard can
+// fetch any workbook column into a custom table column. A hash of the content decides whether it changed, so an
+// unchanged workbook never rewrites the file (gzip output alone could differ between runs).
+function patchWorkbook(htmlContent, wb) {
+    if (!wb) return htmlContent;
+    const json = JSON.stringify(wb);
+    const hash = crypto.createHash('sha1').update(json).digest('hex').slice(0, 16);
+    const gm = 'const WB_GZ = "', hm = 'const WB_HASH = "';
+    const gi = htmlContent.indexOf(gm), hi = htmlContent.indexOf(hm);
+    if (gi < 0 || hi < 0) { console.log('index.html has no WB_GZ / WB_HASH markers - skipping the workbook store (non-fatal).'); return htmlContent; }
+    const hEnd = htmlContent.indexOf('";', hi + hm.length);
+    if (htmlContent.slice(hi + hm.length, hEnd) === hash) return htmlContent;
+    const gz = zlib.gzipSync(Buffer.from(json, 'utf-8'), { level: 9 }).toString('base64');
+    const gEnd = htmlContent.indexOf('";', gi + gm.length);
+    let out = htmlContent.slice(0, gi + gm.length) + gz + htmlContent.slice(gEnd);
+    const hi2 = out.indexOf(hm), hEnd2 = out.indexOf('";', hi2 + hm.length);
+    out = out.slice(0, hi2 + hm.length) + hash + out.slice(hEnd2);
+    console.log('Workbook store updated:', wb.sheets.length, 'sheets,', (json.length / 1024).toFixed(0), 'KB raw,', (gz.length / 1024).toFixed(0), 'KB compressed.' + (wb.skipped && wb.skipped.length ? ' Not included: ' + wb.skipped.join('; ') : ''));
+    return out;
 }
 
 // The "Data source" label near the top of the page is a hardcoded <b id="srcName"> in the
@@ -204,7 +227,7 @@ async function main() {
   console.log('Got token. Downloading workbook from', FILE_PATH, 'for', USER_UPN, '...');
   const buf = await downloadWorkbook(token);
   console.log(`Downloaded ${(buf.length / 1024 / 1024).toFixed(1)} MB. Extracting...`);
-  const { DS, issues, missing, sheetNames } = extractAll(buf);
+  const { DS, issues, missing, sheetNames, WB } = extractAll(buf);
   if (missing.length) console.warn('WARNING: sheets not found in workbook:', missing.join(', '));
   console.log('Extracted sheets:', Object.keys(DS).map(k => `${k}(${DS[k].rows.length})`).join(', '));
   console.log('Extracted HQ issues:', issues.length);
@@ -213,6 +236,7 @@ async function main() {
   const html = fs.readFileSync(INDEX_HTML_PATH, 'utf-8');
   let patched = patchIndexHtml(html, DS);
   patched = patchIssues(patched, issues);
+    try { patched = patchWorkbook(patched, WB); } catch (err) { console.log('Workbook store step failed (non-fatal):', err.message); }
 
   try {
     const ticketIssues = readTicketIssuesFromBoard(TICKET_BOARD_HTML_PATH);
@@ -249,7 +273,7 @@ async function main() {
   console.log('index.html updated with fresh data, issues, tickets, and current label.');
 }
 
-module.exports = { patchIndexHtml, patchSourceLabel, patchIssues, readTicketIssuesFromBoard, patchTicketIssues, getAppToken, downloadWorkbook };
+module.exports = { patchWorkbook, patchIndexHtml, patchSourceLabel, patchIssues, readTicketIssuesFromBoard, patchTicketIssues, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
   main().catch(err => {
