@@ -1581,6 +1581,28 @@ function mergeTicketIssues(){
     }
     ['Priority','Reporter'].forEach(f=>{ if(ISSUE_FIELDS.indexOf(f)<0) ISSUE_FIELDS.push(f); });
   });
+  /* tickets that were deleted from the ticket board are removed here too */
+  Object.keys(byKey).forEach(k=>{ const i=ISSUES.indexOf(byKey[k]); if(i>=0) ISSUES.splice(i,1); });
+}
+/* Keep HQ issues in step with the workbook: requests deleted from the HQ issue sheet disappear here too, new ones
+   appear, and their wording is refreshed. Status steps and approvals logged in this dashboard are kept, and requests
+   added by hand in the dashboard are never touched. */
+/* the JSON array that starts right after a marker, found by bracket depth (titles may contain any text) */
+function sliceJsonArray(html,marker){ const s=html.indexOf(marker); if(s<0) return null; let i=s+marker.length; if(html[i]!=='[') return null; const st=i; let d=0,inS=false,esc=false;
+  for(;i<html.length;i++){ const c=html[i]; if(inS){ if(esc) esc=false; else if(c==='\\') esc=true; else if(c==='"') inS=false; continue; } if(c==='"') inS=true; else if(c==='[') d++; else if(c===']'){ d--; if(d===0) return html.slice(st,i+1); } }
+  return null; }
+function reconcileIssues(synced){
+  if(!Array.isArray(synced)) return;
+  const fresh=new Map(); synced.forEach(x=>{ if(x&&x.src==='sheet'&&x.key&&!fresh.has(x.key)) fresh.set(x.key,x); });
+  if(!fresh.size) return;   /* never wipe the list because a sync came back empty */
+  const seen=new Set();
+  ISSUES=ISSUES.filter(it=>{
+    if(!it||it.src!=='sheet') return true;
+    const f=it.key&&fresh.get(it.key); if(!f||seen.has(it.key)) return false; seen.add(it.key);
+    ['title','category','loc','ref'].forEach(p=>{ if(f[p]!=null&&f[p]!=='') it[p]=f[p]; });
+    it.fields=Object.assign({},it.fields||{},f.fields||{});
+    return true; });
+  fresh.forEach((x,k)=>{ if(!seen.has(k)) ISSUES.push(JSON.parse(JSON.stringify(x))); });
 }
 
 let ISSUE_FIELDS=[];      /* user-named custom column headers for issues */
@@ -2728,7 +2750,9 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
   // 404 looking for this file in their OneDrive — harmless, but pointless
   // noise. Manual upload/link-load/share options have been removed from
   // this dashboard so no one can overwrite the synced data by mistake.
+  const _syncedIssues=JSON.parse(JSON.stringify(ISSUES));
   await restoreState();
+  reconcileIssues(_syncedIssues);
   mergeTicketIssues();
   saveState();
   show('payments');
@@ -2754,7 +2778,7 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
 })();
 
 /* ===================== Live refresh: pick up newly synced data without reloading ===================== */
-const BUILD_ID='2026-11-12-v5';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+const BUILD_ID='2026-11-12-v6';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
 (function(){
   if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
   const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],utensils:['utensils'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog'],pest:['pest']};
@@ -2769,7 +2793,7 @@ const BUILD_ID='2026-11-12-v5';   /* change this whenever the dashboard CODE cha
   function parse(html){ try{
       const emb=grab(html,'const EMB'+'EDDED = ','};\n'), tix=grab(html,'const TICKET'+'_ISSUES = ',';\n');
       const lab=html.match(new RegExp('<b id="src'+'Name">([^<]*)</b>')), bid=html.match(new RegExp("const BUILD_"+"ID='([^']+)'"));
-      return {emb:emb==null?null:JSON.parse(emb+'}'), tix:tix==null?null:JSON.parse(tix), label:lab?lab[1]:null, build:bid?bid[1]:null, wbh:grab(html,'const WB_'+'HASH = "','";'), wbg:grab(html,'const WB_'+'GZ = "','";')}; }catch(e){ return null; } }
+      return {emb:emb==null?null:JSON.parse(emb+'}'), tix:tix==null?null:JSON.parse(tix), label:lab?lab[1]:null, build:bid?bid[1]:null, wbh:grab(html,'const WB_'+'HASH = "','";'), wbg:grab(html,'const WB_'+'GZ = "','";'), iss:(()=>{ const s=sliceJsonArray(html,'let ISS'+'UES='); try{ return s==null?null:JSON.parse(s); }catch(e){ return null; } })()}; }catch(e){ return null; } }
   const busyNow=()=>EDIT||!!document.querySelector('.modal-bg')||(Date.now()-lastTouch<12000);
   function rerender(){ if(chipEl) chipEl.classList.remove('on'); try{ show(currentPage); }catch(e){} chip('Data updated just now',null,3500); }
   function applyFresh(f){
@@ -2777,13 +2801,14 @@ const BUILD_ID='2026-11-12-v5';   /* change this whenever the dashboard CODE cha
     const keys=new Set(Object.keys(f.emb).concat(Object.keys(EMBEDDED)));
     const changed=[...keys].filter(k=>JSON.stringify(f.emb[k])!==JSON.stringify(EMBEDDED[k]));
     const tixChanged=!!f.tix&&JSON.stringify(f.tix)!==JSON.stringify(TICKET_ISSUES);
+    let issChanged=false; if(Array.isArray(f.iss)){ const b4=JSON.stringify(ISSUES); try{ reconcileIssues(f.iss); }catch(e){} issChanged=JSON.stringify(ISSUES)!==b4; }
     if(f.label){ const nm=document.getElementById('srcName'); if(nm) nm.textContent=f.label; try{ LAST_LABEL=f.label; }catch(e){} }
-    if(!changed.length&&!tixChanged) return;
+    if(!changed.length&&!tixChanged&&!issChanged) return;
     Object.keys(EMBEDDED).forEach(k=>{ delete EMBEDDED[k]; }); Object.assign(EMBEDDED,f.emb);
     DS=JSON.parse(JSON.stringify(EMBEDDED));
     if(tixChanged){ TICKET_ISSUES.length=0; f.tix.forEach(t=>TICKET_ISSUES.push(t)); try{ mergeTicketIssues(); }catch(e){} }
     try{ saveState(); }catch(e){}
-    const need=(PAGE_DS[currentPage]||[]).some(k=>changed.includes(k))||(currentPage==='issues'&&tixChanged);
+    const need=(PAGE_DS[currentPage]||[]).some(k=>changed.includes(k))||(currentPage==='issues'&&(tixChanged||issChanged));
     if(!need) return;                                   /* other tabs simply show fresh data when opened */
     if(busyNow()) chip('\u21bb New data \u2014 click to update',rerender); else rerender();
   }
