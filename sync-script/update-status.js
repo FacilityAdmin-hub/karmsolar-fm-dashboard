@@ -16,7 +16,7 @@ const ISSUE_NUMBER = process.env.ISSUE_NUMBER;
 const ISSUE_BODY = process.env.ISSUE_BODY;
 
 // Must match STATUSES in ticket-board.html.
-const VALID_STATUSES = ['Backlog', 'Open', 'In Progress', 'In Review', 'Waiting Approval', 'Blocked', 'Resolved', 'Closed'];
+const VALID_STATUSES = ['Backlog', 'Open', 'In Progress', 'In Review', 'Waiting Approval', 'Awaiting Procurement', 'Blocked', 'Resolved', 'Closed'];
 
 // Column order in the Tickets table (13 columns, A..M). Status is column J (index 9),
 // Date Updated is column L (index 11).
