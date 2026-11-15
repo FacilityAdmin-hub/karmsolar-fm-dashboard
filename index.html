@@ -256,8 +256,22 @@ body.editcards .cardresize{display:block}
 .cardx{position:absolute;top:-11px;right:10px;z-index:9;display:none;align-items:center;gap:4px;background:var(--red);color:#fff;border:2px solid #fff;border-radius:9px;font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.22)}
 .cardx:hover{background:#c23}
 body.editcards .cardx{display:inline-flex}
+.kpi{position:relative}
+.kpix{position:absolute;top:6px;right:6px;z-index:5;display:none;width:22px;height:22px;align-items:center;justify-content:center;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:var(--red);color:#fff;font-size:11px;font-weight:700;cursor:pointer;padding:0}
+body.editcards .kpix{display:inline-flex}
+body.editcards .kpi{outline:1px dashed rgba(255,176,46,.45);outline-offset:2px}
+.layoutbar{display:none;align-items:center;gap:10px;flex-wrap:wrap;background:rgba(255,176,46,.08);border:1px solid rgba(255,176,46,.35);border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:12.5px}
+body.editcards .layoutbar{display:flex}
+.layoutbar .cap{margin:0;flex:1;min-width:180px}
+.addwrap{position:relative}
+.addpanel{display:none;position:absolute;z-index:40;top:calc(100% + 6px);right:0;min-width:260px;max-width:360px;max-height:360px;overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;box-shadow:0 12px 30px rgba(0,0,0,.35)}
+.addpanel.open{display:block}
+.addrow{display:block;width:100%;text-align:left;margin:4px 0;white-space:normal}
+.addnew{border-color:var(--solar);color:var(--solar)}
+.cbuild.cbflash{box-shadow:0 0 0 3px var(--solar);transition:box-shadow .3s}
 .editbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#fff6e6;border:1px solid #f0d9a8;border-radius:12px;padding:9px 14px;margin-bottom:14px;font-size:12.5px;color:var(--ink)}
 .vfil{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
+.locsw{gap:4px}.locsw .lbtn{padding:3px 11px;font-size:11.5px;border-radius:999px}.locsw .lbtn.on{background:var(--solar);color:#08141D;border-color:var(--solar)}
 .vfil>span{font-size:11.5px;color:var(--muted);font-weight:600}
 
 /* ===================== Night Operations theme ===================== */
@@ -640,13 +654,18 @@ function bucketAvg(items,gran,from,to){ const s={},n={}; let mn=null,mx=null; it
 function cardCtl(id,label,cats,opt){ opt=opt||{};
   const cat=(cats&&cats.length)?`<div class="vfil"><span>${esc(label)}</span>${itemPicker('c_'+id,cats)}</div>`:'';
   const cal=opt.noDate?'':granBar('g_'+id,opt.gran||'month');
-  return `<div class="cardbar">${cat}${cal}</div>`; }
+  const loc=(opt.locs&&opt.locs.length)?`<div class="vfil locsw" data-locsw="l_${id}"><span>Location</span>${['All'].concat(opt.locs).map((l,i)=>`<button type="button" class="btn lbtn${i===0?' on':''}" data-v="${i===0?'':esc(l)}">${esc(l)}</button>`).join('')}</div>`:'';
+  const cmp=(opt.cmp&&opt.cmp.length)?`<label class="vfil"><span>Compare by</span><select class="sel cmpsel" data-cmp="m_${id}">${opt.cmp.map(c=>`<option value="${esc(c[0])}" ${c[0]===opt.cmpDef?'selected':''}>${esc(c[1])}</option>`).join('')}</select></label>`:'';
+  return `<div class="cardbar">${loc}${cat}${cmp}${cal}</div>`; }
 function wireCardCtl(w,id,cats,opt,draw){ opt=opt||{};
-  const st={sel:[],g:opt.gran||'month',f:null,t:null};
+  const st={sel:[],g:opt.gran||'month',f:null,t:null,loc:'',cmp:opt.cmpDef||((opt.cmp&&opt.cmp[0])?opt.cmp[0][0]:'')};
   if(cats&&cats.length) wireItemPicker(w,'c_'+id,s=>{ st.sel=s; draw(st); });
+  const lsw=w.querySelector('.locsw[data-locsw="l_'+id+'"]'); if(lsw) lsw.querySelectorAll('.lbtn').forEach(b=>b.onclick=()=>{ lsw.querySelectorAll('.lbtn').forEach(x=>x.classList.toggle('on',x===b)); st.loc=b.getAttribute('data-v')||''; draw(st); });
+  const csel=w.querySelector('.cmpsel[data-cmp="m_'+id+'"]'); if(csel) csel.onchange=()=>{ st.cmp=csel.value; draw(st); };
   if(!opt.noDate) wireGran(w,'g_'+id,(g,f,t)=>{ st.g=g; st.f=f; st.t=t; draw(st); });
   draw(st); return st; }
 function inSel(sel,v){ return !sel.length||sel.indexOf(v)>=0; }
+function inLoc(loc,v){ return !loc||String(v==null?'':v).trim().toLowerCase()===String(loc).toLowerCase(); }
 
 function budgetItems(arr){ return (arr||[]).map((v,i)=>({d:new Date(Date.UTC(2026,i,1)),v:v||0})); }
 /* ---- item multi-select (one or several items) ---- */
@@ -822,10 +841,33 @@ A.kstd=function(){ const d=DS.kstd; if(!d||!d.rows) return {items:[],employees:0
   const items=d.rows.map(r=>({name:String(r[0]||'').trim(),qty:num(r[2]),price:num(r[6]),cpm:num(r[7]),cost:num(r[2])*num(r[6])})).filter(o=>o.name);
   const employees=d.rows.reduce((m,r)=>Math.max(m,num(r[3])),0);
   return {items,employees,totalMonthly:items.reduce((a,b)=>a+b.cost,0),totalCpm:items.reduce((a,b)=>a+b.cpm,0)}; };
+function parseCateringAoa(cr){
+  const hdr=(cr[0]||[]).map(h=>String(h==null?'':h).replace(/\s+/g,' ').trim());
+  const low=hdr.map(h=>h.toLowerCase());
+  const sites=[]; let c=3;
+  while(c<hdr.length&&hdr[c]&&low[c]!=='code'){ const nm=hdr[c]; const staff=(nm.match(/(\d+)\s*staff/i)||[])[1];
+    const pair=(hdr[c+1]===nm); sites.push({name:nm.replace(/\s*-?\s*\d+\s*staff\s*$/i,'').trim().slice(0,40)||('Site '+(sites.length+1)),qc:c,pc:pair?c+1:-1,staff:staff?+staff:0,qty:0,cost:0}); c+=pair?2:1; }
+  const fi=re=>low.findIndex((h,i)=>i>c&&re.test(h));
+  const tq=fi(/^in totals?$/), up=fi(/^price$/), tp=fi(/total price/);
+  const items=[];
+  for(let i=1;i<cr.length;i++){ const row=cr[i]||[]; const it=String(row[2]==null?'':row[2]).trim(); if(!it)continue;
+    const per=sites.map(s=>num(row[s.qc]));
+    const perCost=sites.map(s=>s.pc>=0?num(row[s.pc]):0);
+    let qty=per.reduce((a,b)=>a+b,0); if(tq>=0&&num(row[tq])>qty)qty=num(row[tq]);
+    let tot=perCost.reduce((a,b)=>a+b,0); if(tp>=0&&num(row[tp])>tot)tot=num(row[tp]);
+    const price=up>=0?num(row[up]):0; if(tot<=0&&price>0)tot=price*qty;
+    if(qty<=0&&tot<=0)continue;
+    sites.forEach((s,si)=>{ s.qty+=per[si]; s.cost+=perCost[si]>0?perCost[si]:(price>0?price*per[si]:0); });
+    items.push([it,qty,Math.round(tot),String(row[1]==null?'':row[1]).trim()].concat(per)); }
+  if(!items.length)return null;
+  return {catering:{headers:['Item','Qty','Total cost','Code'].concat(sites.map(s=>s.name)),rows:items},
+          cateringsites:{headers:['Site','Total cost','Qty','Staff'],rows:sites.map(s=>[s.name,Math.round(s.cost),s.qty,s.staff])}}; }
 A.catering=function(){ const d=DS.catering, sd=DS.cateringsites;
-  const items=((d&&d.rows)||[]).map(r=>({name:String(r[0]||'').trim(),qty:num(r[1]),cost:num(r[2])})).filter(o=>o.name);
-  const sites=((sd&&sd.rows)||[]).map(r=>({name:String(r[0]||'').trim(),cost:num(r[1])})).filter(o=>o.name);
-  return {items,sites,total:items.reduce((a,b)=>a+b.cost,0),siteTotal:sites.reduce((a,b)=>a+b.cost,0)}; };
+  const siteNames=(d&&d.headers&&d.headers.length>4)?d.headers.slice(4).map(h=>String(h||'').trim()):[];
+  const items=((d&&d.rows)||[]).map(r=>({name:String(r[0]||'').trim(),qty:num(r[1]),cost:num(r[2]),code:String(r[3]||'').trim(),per:siteNames.map((_,i)=>num(r[4+i]))})).filter(o=>o.name);
+  const sites=((sd&&sd.rows)||[]).map(r=>({name:String(r[0]||'').trim(),cost:num(r[1]),qty:num(r[2]),staff:num(r[3])})).filter(o=>o.name);
+  const total=items.reduce((a,b)=>a+b.cost,0);
+  return {items,sites,siteNames,total,siteTotal:sites.reduce((a,b)=>a+b.cost,0),hasCost:total>0,qtyTotal:items.reduce((a,b)=>a+b.qty,0)}; };
 function parseCheckin(s){ s=String(s==null?'':s).trim(); if(!s||s==='0')return null; const p=s.split(/[:\/.\-\s]+/).filter(x=>x!==''); let h=parseInt(p[0],10); let m=p.length>1?parseInt(p[1],10):0; if(isNaN(h)||h<0||h>23)return null; if(isNaN(m)||m<0||m>59)m=0; return h*60+m; }
 function fmtMin(m){ if(m==null)return '\u2014'; const h=Math.floor(m/60),mm=Math.round(m%60); return String(h).padStart(2,'0')+':'+String(mm).padStart(2,'0'); }
 A.attendance=function(){ const d=DS.attendance; if(!d||!d.rows) return {records:[],byStaff:[],submissions:0,staff:0,avgPerDay:0,dateRange:null};
@@ -1044,30 +1086,31 @@ PG.hkext=function(w){ const rows=DS.hkext.rows; const qCols=[4,5,6,7,8,9,10,11,1
       options:{plugins:{legend:{position:'top',align:'end'}},scales:{x:gridX,y:{...gridY,min:0,max:5,ticks:{stepSize:1,callback:v=>v}}},maintainAspectRatio:false}}); }); };
 
 PG.consumption=function(w){ const a=A.adminCons(); const rows=DS.adminconsumption.rows; const names=a.names;
-  const R=(st)=>rows.filter(x=>_inRange(toDate(x[0]),st.f,st.t));
+  const LOCS=['HQ','Sand'];
+  const R=(st)=>rows.filter(x=>_inRange(toDate(x[0]),st.f,st.t)&&inLoc(st.loc,x[4]));
   const totOf=(st)=>{ const per=names.map(()=>0); R(st).forEach(x=>names.forEach((n,i)=>{ if(inSel(st.sel,n)) per[i]+=num(x[i+2]); }));
     return names.map((n,i)=>({name:n,unit:unitFor(n),qty:per[i]})).filter(o=>o.qty>0).sort((x,y)=>y.qty-x.qty); };
-  w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('ck','Items',names)}<div class="kpis" id="cKpis" style="margin-top:8px"></div></div>
-  <div class="card" style="margin-top:16px"><h3>Consumption by period</h3><p class="cap">Total units recorded</p>${cardCtl('cm','Items',names)}<div class="chart-h"><canvas id="cm"></canvas></div></div>
+  w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('ck','Items',names,{locs:LOCS})}<div class="kpis" id="cKpis" style="margin-top:8px"></div></div>
+  <div class="card" style="margin-top:16px"><h3>Consumption by period</h3><p class="cap">Total units recorded</p>${cardCtl('cm','Items',names,{locs:LOCS})}<div class="chart-h"><canvas id="cm"></canvas></div></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="card"><h3>Quantity by item</h3><p class="cap">Units consumed in this card\u2019s range</p>${cardCtl('citm','Items',names)}<div class="chart-h lg"><canvas id="citm"></canvas></div></div>
-    <div class="card"><h3>Share by item</h3><p class="cap">Proportion of consumption</p>${cardCtl('cshr','Items',names)}<div class="chart-h lg"><canvas id="cshr"></canvas></div></div></div>
+    <div class="card"><h3>Quantity by item</h3><p class="cap">Units consumed in this card\u2019s range</p>${cardCtl('citm','Items',names,{locs:LOCS})}<div class="chart-h lg"><canvas id="citm"></canvas></div></div>
+    <div class="card"><h3>Share by item</h3><p class="cap">Proportion of consumption</p>${cardCtl('cshr','Items',names,{locs:LOCS})}<div class="chart-h lg"><canvas id="cshr"></canvas></div></div></div>
   <div class="sec-title"><h2>Consumption detail</h2><span>this table has its own filters</span></div>
-  <div class="card">${cardCtl('ctbl','Items',names)}<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Unit</th><th class="num">Quantity</th><th>Share</th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
-  wireCardCtl(w,'ck',names,{},st=>{ const list=totOf(st); const tot=list.reduce((s,i)=>s+i.qty,0);
+  <div class="card">${cardCtl('ctbl','Items',names,{locs:LOCS})}<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Unit</th><th class="num">Quantity</th><th>Share</th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
+  wireCardCtl(w,'ck',names,{locs:LOCS},st=>{ const list=totOf(st); const tot=list.reduce((s,i)=>s+i.qty,0);
     w.querySelector('#cKpis').innerHTML=
-      kpi('Total units',fmt(tot),'',R(st).length+' stock-takes','')+
+      kpi('Total units',fmt(tot),'',R(st).length+' stock-takes'+(st.loc?' \u00b7 '+st.loc:''),'')+
       kpi('Items',list.length,'',st.sel.length?'selected':'with consumption','p')+
       kpi('Top item',list[0]?fmt(list[0].qty):'\u2014','',list[0]?list[0].name:'\u2014','g')+
       kpi('Avg / stock-take',R(st).length?fmt(Math.round(tot/R(st).length)):'\u2014','','units','v'); });
-  wireCardCtl(w,'cm',names,{},st=>{ const items=R(st).map(x=>{ let v=0; names.forEach((n,i)=>{ if(inSel(st.sel,n)) v+=num(x[i+2]); }); return {d:toDate(x[0]),v}; }).filter(o=>o.d);
+  wireCardCtl(w,'cm',names,{locs:LOCS},st=>{ const items=R(st).map(x=>{ let v=0; names.forEach((n,i)=>{ if(inSel(st.sel,n)) v+=num(x[i+2]); }); return {d:toDate(x[0]),v}; }).filter(o=>o.d);
     const b=bucketSum(items,st.g,st.f,st.t);
     mkChart('cm',{type:'bar',data:{labels:b.labels,datasets:[{data:b.data,backgroundColor:C.solar,borderRadius:5,maxBarThickness:48}]},options:{plugins:noLeg,scales:{x:gridX,y:{...gridY,ticks:{callback:v=>fmt(v)}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'citm',names,{},st=>{ const list=totOf(st).slice(0,25);
+  wireCardCtl(w,'citm',names,{locs:LOCS},st=>{ const list=totOf(st).slice(0,25);
     mkChart('citm',{type:'bar',data:{labels:list.map(i=>i.name),datasets:[{data:list.map(i=>i.qty),backgroundColor:C.petrol,borderRadius:4,maxBarThickness:16}]},options:{indexAxis:'y',plugins:noLeg,scales:{x:{...gridY,ticks:{callback:v=>fmt(v)}},y:{grid:{display:false},ticks:{font:{size:10}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'cshr',names,{},st=>{ const list=totOf(st).slice(0,8);
+  wireCardCtl(w,'cshr',names,{locs:LOCS},st=>{ const list=totOf(st).slice(0,8);
     mkChart('cshr',{type:'doughnut',data:{labels:list.map(i=>i.name),datasets:[{data:list.map(i=>i.qty),backgroundColor:[C.petrol,C.solar,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95'],borderWidth:2,borderColor:'#0F2230'}]},options:{cutout:'58%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:6,font:{size:10}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'ctbl',names,{},st=>{ const tb=w.querySelector('#ctb'); tb.innerHTML=''; const list=totOf(st); const mx=list[0]?list[0].qty:1;
+  wireCardCtl(w,'ctbl',names,{locs:LOCS},st=>{ const tb=w.querySelector('#ctb'); tb.innerHTML=''; const list=totOf(st); const mx=list[0]?list[0].qty:1;
     list.forEach(i=>tb.appendChild(el('tr',null,`<td>${esc(i.name)}</td><td><span class="pill mut">${i.unit}</span></td><td class="num">${fmt(i.qty)}</td><td style="width:150px"><div class="prog"><i style="width:${i.qty/mx*100}%"></i></div></td>`)));
     if(!list.length) tb.innerHTML='<tr><td colspan="4" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
 
@@ -1131,8 +1174,7 @@ PG.stock=function(w){ const s=A.stock(); const ITEMS=s.items.map(i=>i.name);
     let ord=0,con=0,cur=0,low=0; its.forEach(i=>{ const c=cm[norm(i.name)]||0; ord+=i.ord; con+=c; cur+=i.cur; const rem=Math.max(i.ord-c,0); if(i.ord>0&&rem/i.ord<0.25)low++; });
     w.querySelector('#sKpis').innerHTML=
       kpi('Total ordered',fmt(ord),'',its.length+' items','p')+
-      kpi('Consumed (in range)',fmt(con),'','from stock-takes','')+
-      kpi('On hand',fmt(cur),'','current count','g')+
+      kpi('Consumed',fmt(cur),'','from the stock sheet','g')+
       kpi('Low stock',low,'','below 25%','r'); });
   wireCardCtl(w,'scon',ITEMS,{},st=>{ const cm=consMap(st.f,st.t);
     const list=pick(st).map(i=>({name:i.name,ord:i.ord,cons:cm[norm(i.name)]||0})).sort((a,b)=>b.cons-a.cons);
@@ -1162,8 +1204,7 @@ PG.sandstock=function(w){ if(!DS.sandstock||!DS.sandstock.rows){ w.innerHTML='<d
     let ord=0,con=0,cur=0,low=0; its.forEach(i=>{ const c=cm[norm(i.name)]||0; ord+=i.ord; con+=c; cur+=i.cur; const rem=Math.max(i.ord-c,0); if(i.ord>0&&rem/i.ord<0.25)low++; });
     w.querySelector('#ssKpis').innerHTML=
       kpi('Total ordered',fmt(ord),'',its.length+' items','p')+
-      kpi('Consumed (in range)',fmt(con),'','from stock-takes','')+
-      kpi('On hand',fmt(cur),'','current count','g')+
+      kpi('Consumed',fmt(cur),'','from the stock sheet','g')+
       kpi('Low stock',low,'','below 25%','r'); });
   wireCardCtl(w,'sscon',ITEMS,{},st=>{ const cm=consMap(st.f,st.t);
     const list=pick(st).map(i=>({name:i.name,ord:i.ord,cons:cm[norm(i.name)]||0})).sort((a,b)=>b.cons-a.cons);
@@ -1351,57 +1392,95 @@ PG.kstd=function(w){ const k=A.kstd(); const ITEMS=k.items.map(i=>i.name);
     if(!tb.children.length) tb.innerHTML='<tr><td colspan="4" class="cap">Nothing matches.</td></tr>'; }); };
 
 PG.catering=function(w){ const c=A.catering();
+  if(!c.items.length){ w.innerHTML='<div class="note">No rows found in the <b>Sites Catering</b> sheet yet. Data appears here after the next automatic sync (every 5 minutes).</div>'; return; }
   const SITES=c.sites.map(s=>s.name), ITEMS=c.items.map(i=>i.name);
+  const COST=c.hasCost, mLab=COST?'Cost (EGP)':'Quantity', mFmt=v=>COST?('EGP '+egp(v)):fmt(v);
+  const sv=s=>COST?s.cost:s.qty;
+  /* an item's amount for the selected sites (all sites when none are ticked) */
+  const itemAmt=(i,sel)=>{ if(!sel.length||!c.siteNames.length) return COST?i.cost:i.qty; let q=0; c.siteNames.forEach((n,k)=>{ if(sel.indexOf(n)>=0) q+=i.per[k]||0; }); return COST&&i.qty?i.cost*q/i.qty:q; };
+  const pal=[C.petrol,C.solar,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95','#3FB6A8','#B86BD6','#D98C3F','#5C7CFA'];
   w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('gk','Sites',SITES,{noDate:true})}<div class="kpis" id="gKpis" style="margin-top:8px"></div></div>
-  <div class="note">The <b>Sites Catering</b> sheet has no date column, so these cards have site / item filters but no calendar.</div>
+  <div class="note">The <b>Sites Catering</b> sheet has no date column, so these cards have site / item filters but no calendar.${COST?'':' Prices are still empty in the sheet, so the cards show <b>quantities</b>; they switch to cost automatically once prices are filled in.'}</div>
   <div class="grid g2">
-    <div class="card"><h3>Cost by site</h3><p class="cap">Total catering spend per location</p>${cardCtl('cts','Sites',SITES,{noDate:true})}<div class="chart-h lg"><canvas id="cts"></canvas></div></div>
-    <div class="card"><h3>Cost share by site</h3><p class="cap">Proportion of catering spend</p>${cardCtl('ctd','Sites',SITES,{noDate:true})}<div class="chart-h lg"><canvas id="ctd"></canvas></div></div></div>
-  <div class="card" style="margin-top:16px"><h3>Cost by item</h3><p class="cap">Total catering cost per item</p>${cardCtl('cti','Items',ITEMS,{noDate:true})}<div class="chart-h" style="height:${Math.max(340,ITEMS.length*20)}px"><canvas id="cti"></canvas></div></div>
-  <div class="sec-title"><h2>Catering detail</h2><span>this table has its own filter</span></div>
-  <div class="card">${cardCtl('gtbl','Items',ITEMS,{noDate:true})}<div class="tbl-wrap"><table><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Total cost (EGP)</th></tr></thead><tbody id="gtb"></tbody></table></div></div>`;
-  wireCardCtl(w,'gk',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)); const tot=ss.reduce((a,b)=>a+b.cost,0);
-    const top=[...ss].sort((a,b)=>b.cost-a.cost)[0];
-    w.querySelector('#gKpis').innerHTML=
-      kpi('Total catering cost','EGP '+egp(tot),'','selected sites','p')+
-      kpi('Sites',ss.length,'',st.sel.length?'selected':'locations','')+
-      kpi('Items',c.items.length,'','catalogue items','g')+
-      kpi('Top site',top?('EGP '+egp(top.cost)):'\u2014','',top?top.name:'\u2014','v'); });
-  wireCardCtl(w,'cts',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)).sort((a,b)=>b.cost-a.cost);
-    mkChart('cts',{type:'bar',data:{labels:ss.map(s=>s.name),datasets:[{data:ss.map(s=>s.cost),backgroundColor:C.solar,borderRadius:5,maxBarThickness:26}]},options:{indexAxis:'y',plugins:noLeg,scales:{x:{...gridY,ticks:{callback:v=>egp(v)}},y:{grid:{display:false},ticks:{font:{size:10.5}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'ctd',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)).sort((a,b)=>b.cost-a.cost);
-    mkChart('ctd',{type:'doughnut',data:{labels:ss.map(s=>s.name),datasets:[{data:ss.map(s=>s.cost),backgroundColor:[C.petrol,C.solar,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95'],borderWidth:2,borderColor:'#0F2230'}]},options:{cutout:'56%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:6,font:{size:9.5}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'cti',ITEMS,{noDate:true},st=>{ const it=c.items.filter(i=>inSel(st.sel,i.name)).sort((a,b)=>b.cost-a.cost);
-    mkChart('cti',{type:'bar',data:{labels:it.map(i=>i.name),datasets:[{data:it.map(i=>i.cost),backgroundColor:C.petrol,borderRadius:4,maxBarThickness:14}]},options:{indexAxis:'y',plugins:noLeg,scales:{x:{...gridY,ticks:{callback:v=>egp(v)}},y:{grid:{display:false},ticks:{font:{size:9.5}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'gtbl',ITEMS,{noDate:true},st=>{ const tb=w.querySelector('#gtb'); tb.innerHTML='';
-    c.items.filter(i=>inSel(st.sel,i.name)).sort((a,b)=>b.cost-a.cost).forEach(i=>tb.appendChild(el('tr',null,`<td>${esc(i.name)}</td><td class="num">${fmt(i.qty)}</td><td class="num">${fmt(i.cost)}</td>`)));
-    if(!tb.children.length) tb.innerHTML='<tr><td colspan="3" class="cap">Nothing matches.</td></tr>'; }); };
-
-PG.pr=function(w){ const rows=DS.pr.rows; const norm=x=>String(x||'').trim();
-  const STAT=[...new Set(rows.map(x=>norm(x[1])).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-  const R=st=>rows.filter(x=>inSel(st.sel,norm(x[1])));
-  w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('prk','PR Status',STAT,{noDate:true})}<div class="kpis" id="prKpis" style="margin-top:8px"></div></div>
+    <div class="card"><h3>${mLab} by site</h3><p class="cap">Total catering ${COST?'spend':'quantity requested'} per location</p>${cardCtl('cts','Sites',SITES,{noDate:true})}<div class="chart-h lg"><canvas id="cts"></canvas></div></div>
+    <div class="card"><h3>Share by site</h3><p class="cap">Proportion of catering ${COST?'spend':'quantity'}</p>${cardCtl('ctd','Sites',SITES,{noDate:true})}<div class="chart-h lg"><canvas id="ctd"></canvas></div></div></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="card"><h3>PRs by status</h3><p class="cap">Approval status of purchase requests</p>${cardCtl('prst','PR Status',STAT,{noDate:true})}<div class="chart-h"><canvas id="prst"></canvas></div></div>
-    <div class="card"><h3>PO linkage</h3><p class="cap">Purchase orders raised against PRs</p>${cardCtl('prpo','PR Status',STAT,{noDate:true})}<div class="chart-h"><canvas id="prpo"></canvas></div></div></div>
+    <div class="card"><h3>Per staff member by site</h3><p class="cap">${mLab} divided by the site's staff count</p>${cardCtl('ctp','Sites',SITES,{noDate:true})}<div class="chart-h lg"><canvas id="ctp"></canvas></div></div>
+    <div class="card"><h3>Top items</h3><p class="cap">Filter by site to see what each location orders most</p>${cardCtl('ctt','Sites',SITES,{noDate:true})}<div class="chart-h lg"><canvas id="ctt"></canvas></div></div></div>
+  <div class="card" style="margin-top:16px"><h3>${mLab} by item</h3><p class="cap">All catering items</p>${cardCtl('cti','Items',ITEMS,{noDate:true})}<div class="chart-h" style="height:${Math.max(340,ITEMS.length*20)}px"><canvas id="cti"></canvas></div></div>
+  <div class="sec-title"><h2>Catering detail</h2><span>this table has its own filter</span></div>
+  <div class="card">${cardCtl('gtbl','Items',ITEMS,{noDate:true})}<div class="tbl-wrap"><table><thead><tr><th>Code</th><th>Item</th><th class="num">Total qty</th>${c.siteNames.map(n=>`<th class="num">${esc(n)}</th>`).join('')}<th class="num">Total cost (EGP)</th></tr></thead><tbody id="gtb"></tbody></table></div></div>`;
+  const hbar=(id,labels,data,color)=>mkChart(id,{type:'bar',data:{labels,datasets:[{data,backgroundColor:color,borderRadius:5,maxBarThickness:22}]},options:{indexAxis:'y',plugins:noLeg,scales:{x:{...gridY,ticks:{callback:v=>COST?egp(v):fmt(v)}},y:{grid:{display:false},ticks:{font:{size:10}}}},maintainAspectRatio:false}});
+  wireCardCtl(w,'gk',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)); const tot=ss.reduce((a,b)=>a+sv(b),0);
+    const top=[...ss].sort((a,b)=>sv(b)-sv(a))[0]; const staff=ss.reduce((a,b)=>a+(b.staff||0),0);
+    w.querySelector('#gKpis').innerHTML=
+      kpi(COST?'Total catering cost':'Total quantity',mFmt(tot),'',st.sel.length?'selected sites':'all sites','p')+
+      kpi('Sites',ss.length,'',staff?staff+' staff':'locations','')+
+      kpi('Items',c.items.filter(i=>itemAmt(i,st.sel)>0).length,'','ordered items','g')+
+      kpi('Top site',top?mFmt(sv(top)):'—','',top?top.name:'—','v'); });
+  wireCardCtl(w,'cts',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)).sort((a,b)=>sv(b)-sv(a)); hbar('cts',ss.map(s=>s.name),ss.map(sv),C.solar); });
+  wireCardCtl(w,'ctd',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)&&sv(s)>0).sort((a,b)=>sv(b)-sv(a));
+    mkChart('ctd',{type:'doughnut',data:{labels:ss.map(s=>s.name),datasets:[{data:ss.map(sv),backgroundColor:ss.map((_,k)=>pal[k%pal.length]),borderWidth:2,borderColor:'#0F2230'}]},options:{cutout:'56%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:6,font:{size:9.5}}}},maintainAspectRatio:false}}); });
+  wireCardCtl(w,'ctp',SITES,{noDate:true},st=>{ const ss=c.sites.filter(s=>inSel(st.sel,s.name)&&s.staff>0).map(s=>({n:s.name,v:Math.round(sv(s)/s.staff*10)/10})).sort((a,b)=>b.v-a.v); hbar('ctp',ss.map(s=>s.n),ss.map(s=>s.v),C.green); });
+  wireCardCtl(w,'ctt',SITES,{noDate:true},st=>{ const it=c.items.map(i=>({n:i.name,v:itemAmt(i,st.sel)})).filter(i=>i.v>0).sort((a,b)=>b.v-a.v).slice(0,15); hbar('ctt',it.map(i=>i.n),it.map(i=>i.v),C.violet); });
+  wireCardCtl(w,'cti',ITEMS,{noDate:true},st=>{ const it=c.items.filter(i=>inSel(st.sel,i.name)).sort((a,b)=>(COST?b.cost-a.cost:b.qty-a.qty)); hbar('cti',it.map(i=>i.name),it.map(i=>COST?i.cost:i.qty),C.petrol); });
+  wireCardCtl(w,'gtbl',ITEMS,{noDate:true},st=>{ const tb=w.querySelector('#gtb'); tb.innerHTML='';
+    c.items.filter(i=>inSel(st.sel,i.name)).sort((a,b)=>b.qty-a.qty).forEach(i=>tb.appendChild(el('tr',null,`<td>${esc(i.code||'—')}</td><td>${esc(i.name)}</td><td class="num">${fmt(i.qty)}</td>${c.siteNames.map((_,k)=>`<td class="num">${i.per[k]?fmt(i.per[k]):'—'}</td>`).join('')}<td class="num">${i.cost?fmt(i.cost):'—'}</td>`)));
+    if(!tb.children.length) tb.innerHTML=`<tr><td colspan="${4+c.siteNames.length}" class="cap">Nothing matches.</td></tr>`; }); };
+
+PG.pr=function(w){ const rows=DS.pr.rows; const norm=x=>String(x==null?'':x).trim();
+  const shortCo=s=>norm(s).replace(/\s+for\s+Selling\s+and\s+Distribut\w*\s+Electricity/i,' (Distribution)').replace(/\s+for\s+Electricity\s*&\s*Distribution/i,' (Distribution)').replace(/\s+for\s+Solar\s+Energy/i,' (Solar)').replace(/\s+For\s+Energy\s+Solutions/i,' Energy Solutions');
+  const hasState=rows.some(x=>norm(x[5]));
+  const P=rows.map(x=>({ref:norm(x[0]),d:toDate(x[1]),by:norm(x[2])||'—',co:shortCo(x[3])||'—',coFull:norm(x[3]),title:norm(x[4])||'(no title)',state:norm(x[5])||'—'})).filter(p=>p.ref);
+  const ORDER=['Draft','Department Head','Waiting Approval','Approved','Rejected','Cancelled'];
+  const STAT=[...new Set(P.map(p=>p.state))].sort((a,b)=>{ const ia=ORDER.indexOf(a),ib=ORDER.indexOf(b); return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b); });
+  const CMP=[['state','Status'],['co','Company'],['by','Requested by'],['title','Title'],['month','Month']];
+  const dimOf=(p,k)=>k==='month'?(p.d?mKey(p.d):'—'):p[k];
+  const dimLab=(k,v)=>k==='month'&&v!=='—'?mLabel(v):v;
+  const R=st=>P.filter(p=>inSel(st.sel,p.state)&&_inRange(p.d,st.f,st.t)||(!p.d&&!st.f&&!st.t&&inSel(st.sel,p.state)));
+  const stColor=s=>/approv/i.test(s)?C.green:/draft/i.test(s)?'#7E8B95':/department/i.test(s)?C.solar:/waiting/i.test(s)?C.violet:/reject|cancel/i.test(s)?C.red:C.psoft;
+  const pal=[C.solar,C.petrol,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95','#3FB6A8','#B86BD6','#D98C3F','#5C7CFA'];
+  const colorFor=(k,v,i)=>k==='state'?stColor(v):pal[i%pal.length];
+  const group=(list,k)=>{ const m={}; list.forEach(p=>{ const v=dimOf(p,k); m[v]=(m[v]||0)+1; }); let e=Object.entries(m); if(k==='month') e.sort((a,b)=>a[0]<b[0]?-1:1); else if(k==='state') e.sort((a,b)=>STAT.indexOf(a[0])-STAT.indexOf(b[0])); else e.sort((a,b)=>b[1]-a[1]); return e; };
+  const ctl=(id,def)=>cardCtl(id,'Status',STAT,{cmp:CMP,cmpDef:def});
+  const wopt=def=>({cmp:CMP,cmpDef:def});
+  w.innerHTML=`${hasState?'':'<div class="note">PR statuses (the <b>State</b> column) load with the next automatic sync, within about 5 minutes.</div>'}
+  <div class="card" style="padding:12px 16px">${ctl('prk','state')}<div class="kpis" id="prKpis" style="margin-top:8px"></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3 id="prstT">PRs by status</h3><p class="cap">Share of purchase requests — change “Compare by” to split by company, requester, title or month</p>${ctl('prst','state')}<div class="chart-h"><canvas id="prst"></canvas></div></div>
+    <div class="card"><h3 id="prcoT">Company vs status</h3><p class="cap">Each bar is split by PR status, so you can compare groups side by side</p>${ctl('prco','co')}<div class="chart-h"><canvas id="prco"></canvas></div></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="card"><h3 id="prtmT">PRs over time by status</h3><p class="cap">PRs created per period, stacked by the “Compare by” field</p>${ctl('prtm','state')}<div class="chart-h"><canvas id="prtm"></canvas></div></div>
+    <div class="card"><h3 id="prbyT">PRs by requester</h3><p class="cap">Number of PRs per group</p>${ctl('prby','by')}<div class="chart-h"><canvas id="prby"></canvas></div></div></div>
   <div class="sec-title"><h2>PR log</h2><span>this table has its own filters</span></div>
-  <div class="card">${cardCtl('prtbl','PR Status',STAT,{noDate:true})}<div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>PR No.</th><th>PR Status</th><th>PO No.</th><th>PO Status</th></tr></thead><tbody id="prtb"></tbody></table></div></div>`;
-  wireCardCtl(w,'prk',STAT,{noDate:true},st=>{ const rs=R(st); const app=rs.filter(x=>/approv/i.test(norm(x[1]))).length;
-    const withPo=rs.filter(x=>{ const p=norm(x[2]); return p&&p.toUpperCase()!=='NA'; }).length;
+  <div class="card">${ctl('prtbl','state')}<div class="tbl-wrap" style="max-height:460px;overflow:auto"><table><thead><tr><th>PR No.</th><th>Created</th><th>Requested by</th><th>Company</th><th>Title</th><th>Status</th></tr></thead><tbody id="prtb"></tbody></table></div></div>`;
+  const nameOf=k=>({state:'status',co:'company',by:'requester',title:'title',month:'month'})[k]||k;
+  const setT=(id,txt)=>{ const h=w.querySelector('#'+id); if(h&&LABELS[currentPage+'__'+id]==null) h.textContent=txt; };
+  wireCardCtl(w,'prk',STAT,wopt('state'),st=>{ const rs=R(st); const cnt=re=>rs.filter(p=>re.test(p.state)).length;
+    const app=cnt(/approv/i), pend=cnt(/department|waiting/i), dr=cnt(/draft/i);
+    const top=group(rs,st.cmp)[0];
     w.querySelector('#prKpis').innerHTML=
-      kpi('Total PRs',rs.length,'','purchase requests','p')+
-      kpi('Approved',app,'',rs.length?Math.round(app/rs.length*100)+'%':'0%','g')+
-      kpi('Linked to PO',withPo,'','have a PO number','')+
-      kpi('Statuses',new Set(rs.map(x=>norm(x[1]))).size,'',st.sel.length?'selected':'in view','v'); });
-  wireCardCtl(w,'prst',STAT,{noDate:true},st=>{ const by={}; R(st).forEach(x=>{ const s=norm(x[1])||'\u2014'; by[s]=(by[s]||0)+1; });
-    const dd=Object.entries(by).sort((a,b)=>b[1]-a[1]);
-    mkChart('prst',{type:'doughnut',data:{labels:dd.map(d=>d[0]),datasets:[{data:dd.map(d=>d[1]),backgroundColor:[C.green,C.solar,C.red,C.violet,C.petrol,C.psoft],borderWidth:2,borderColor:'#0F2230'}]},options:{cutout:'58%',plugins:{legend:{position:'bottom',labels:{boxWidth:11,padding:8,font:{size:11}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'prpo',STAT,{noDate:true},st=>{ const by={'Has PO':0,'No PO yet':0}; R(st).forEach(x=>{ const p=norm(x[2]); if(p&&p.toUpperCase()!=='NA') by['Has PO']++; else by['No PO yet']++; });
-    mkChart('prpo',{type:'bar',data:{labels:Object.keys(by),datasets:[{data:Object.values(by),backgroundColor:[C.green,C.solar],borderRadius:5,maxBarThickness:38}]},options:{plugins:noLeg,scales:{x:gridX,y:{...gridY,ticks:{precision:0,callback:v=>v}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'prtbl',STAT,{noDate:true},st=>{ const tb=w.querySelector('#prtb'); tb.innerHTML='';
-    const rs=R(st);
-    rs.forEach(x=>tb.appendChild(el('tr',null,`<td>${esc(norm(x[0]))}</td><td>${esc(norm(x[1])||'\u2014')}</td><td>${esc(norm(x[2])||'\u2014')}</td><td>${esc(norm(x[3])||'\u2014')}</td>`)));
-    if(!rs.length) tb.innerHTML='<tr><td colspan="4" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
+      kpi('Total PRs',rs.length,'',st.sel.length?'selected statuses':'purchase requests','p')+
+      kpi('Approved',app,'',rs.length?Math.round(app/rs.length*100)+'% of PRs':'0%','g')+
+      kpi('Pending approval',pend,'','department head / waiting','')+
+      kpi('Draft',dr,'','not submitted yet','r')+
+      kpi('Top '+nameOf(st.cmp),top?top[1]:'—','',top?dimLab(st.cmp,top[0]):'—','v'); });
+  wireCardCtl(w,'prst',STAT,wopt('state'),st=>{ setT('prstT','PRs by '+nameOf(st.cmp)); const dd=group(R(st),st.cmp).slice(0,12);
+    mkChart('prst',{type:'doughnut',data:{labels:dd.map(d=>dimLab(st.cmp,d[0])),datasets:[{data:dd.map(d=>d[1]),backgroundColor:dd.map((d,i)=>colorFor(st.cmp,d[0],i)),borderWidth:2,borderColor:'#0F2230'}]},options:{cutout:'58%',plugins:{legend:{position:'bottom',labels:{boxWidth:11,padding:8,font:{size:10.5}}}},maintainAspectRatio:false}}); });
+  const stacked=(id,st,xKey,stackKey,horiz)=>{ const rs=R(st); const xs=group(rs,xKey).slice(0,14).map(e=>e[0]); const ss=group(rs,stackKey).map(e=>e[0]);
+    const ds=ss.map((sv,i)=>({label:dimLab(stackKey,sv),data:xs.map(xv=>rs.filter(p=>dimOf(p,xKey)===xv&&dimOf(p,stackKey)===sv).length),backgroundColor:colorFor(stackKey,sv,i),borderRadius:3,maxBarThickness:34,stack:'s'}));
+    const ax={grid:{color:C.grid,drawBorder:false},border:{display:false},stacked:true,ticks:{precision:0}};
+    mkChart(id,{type:'bar',data:{labels:xs.map(x=>dimLab(xKey,x)),datasets:ds},options:{indexAxis:horiz?'y':'x',plugins:{legend:{display:ss.length>1,position:'bottom',labels:{boxWidth:10,padding:6,font:{size:10}}}},scales:horiz?{x:ax,y:{grid:{display:false},stacked:true,ticks:{font:{size:10}}}}:{x:{...gridX,stacked:true},y:ax},maintainAspectRatio:false}}); };
+  wireCardCtl(w,'prco',STAT,wopt('co'),st=>{ setT('prcoT',(CMP.find(c=>c[0]===st.cmp)||['',''])[1]+' vs status'); stacked('prco',st,st.cmp,'state',true); });
+  wireCardCtl(w,'prtm',STAT,wopt('state'),st=>{ setT('prtmT','PRs over time by '+nameOf(st.cmp)); const rs=R(st).filter(p=>p.d);
+    const keys=seqKeys(rs.map(p=>({d:p.d})),st.g,st.f,st.t); const ss=group(rs,st.cmp).slice(0,10).map(e=>e[0]);
+    const ds=ss.map((sv,i)=>({label:dimLab(st.cmp,sv),data:keys.map(k=>rs.filter(p=>periodKey(p.d,st.g)===k&&dimOf(p,st.cmp)===sv).length),backgroundColor:colorFor(st.cmp,sv,i),borderRadius:3,maxBarThickness:40,stack:'s'}));
+    mkChart('prtm',{type:'bar',data:{labels:keys.map(k=>periodLabel(k,st.g)),datasets:ds},options:{plugins:{legend:{display:ss.length>1,position:'bottom',labels:{boxWidth:10,padding:6,font:{size:10}}}},scales:{x:{...gridX,stacked:true},y:{grid:{color:C.grid,drawBorder:false},border:{display:false},stacked:true,ticks:{precision:0}}},maintainAspectRatio:false}}); });
+  wireCardCtl(w,'prby',STAT,wopt('by'),st=>{ setT('prbyT','PRs by '+nameOf(st.cmp)); stacked('prby',st,st.cmp,'state',true); });
+  wireCardCtl(w,'prtbl',STAT,wopt('state'),st=>{ const tb=w.querySelector('#prtb'); tb.innerHTML='';
+    const rs=R(st).slice().sort((a,b)=>{ const x=dimOf(a,st.cmp),y=dimOf(b,st.cmp); return st.cmp==='month'?(y<x?-1:y>x?1:0):String(x).localeCompare(String(y))||((b.d||0)-(a.d||0)); });
+    rs.forEach(p=>tb.appendChild(el('tr',null,`<td>${esc(p.ref)}</td><td>${p.d?p.d.toISOString().slice(0,10):'—'}</td><td>${esc(p.by)}</td><td title="${esc(p.coFull)}">${esc(p.co)}</td><td>${esc(p.title)}</td><td><span class="pill" style="background:${stColor(p.state)};color:#08141D">${esc(p.state)}</span></td>`)));
+    if(!rs.length) tb.innerHTML='<tr><td colspan="6" class="cap">Nothing matches this card’s filters.</td></tr>'; }); };
 
 PG.assetsdata=function(w){ const rows=DS.assetsdata.rows; const norm=x=>String(x||'').trim();
   const CATS=[...new Set(rows.map(x=>norm(x[2])).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
@@ -1516,7 +1595,7 @@ const SPEC={
   sand:{name:'Sand Admin Budget',cols:[0,1,2,3,4,5,6,7,8,9,10,11,12,13,28],valid:c=>String(c[0]||'').trim()!==''},
   capex:{name:'CAPEX',cols:[0,1,2,3,5,6,7,8],valid:c=>String(c[0]||'').trim()!==''},
   actual:{name:'Actual expenses Budget 2.0',cols:[0,1,2,3,4,5,6,7,8,9,10,11,12,13],valid:c=>String(c[0]||'').trim()!==''},
-  pr:{name:'PR ',cols:[0,1,2,3],valid:c=>String(c[0]||'').trim()!==''},
+  pr:{name:'PR ',cols:[0,1,2,3,4,5],valid:c=>String(c[0]||'').trim()!==''},
   assetsdata:{name:'Assets Data',cols:[0,1,2,3,4],valid:c=>String(c[0]||'').trim()!==''},
   ppmlog:{name:'PPM Log',headerRow:3,cols:[0,1,2,3,4,5,6,7,8,9,10,11,12],valid:c=>String(c[1]||'').trim()!==''},
   pest:{name:'Pest Control Tracker',cols:[0,1,2],valid:c=>String(c[0]||'').trim()!==''}
@@ -2048,10 +2127,7 @@ function applyWorkbook(buf,label,st){ try{
     try{ const asn=(wb.SheetNames||[]).find(n=>/assets?\s*value/i.test(n)); if(asn){ const ar=XLSX.utils.sheet_to_json(wb.Sheets[asn],{header:1,raw:true,defval:''}); const rows=[];
       ar.forEach(row=>{ const desc=String(row[0]==null?'':row[0]).trim(); const val=num(row[1]); if(!desc)return; if(/assets summary|^description$|total contents/i.test(desc))return; if(val>0)rows.push([desc,val]); });
       if(rows.length) DS.assets={headers:['Description','Value'],rows}; } }catch(e){}
-    try{ const csn=(wb.SheetNames||[]).find(n=>/sites?\s*catering/i.test(n)); if(csn){ const cr=XLSX.utils.sheet_to_json(wb.Sheets[csn],{header:1,raw:false,defval:''}); const hdr=cr[0]||[];
-      const priceCols=[4,6,8,10,12,14,16,18]; const sites=priceCols.map(ci=>({name:String(hdr[ci-1]||hdr[ci]||('Site '+ci)).replace(/\s+/g,' ').trim().slice(0,26),total:0})); const items=[];
-      for(let i=1;i<cr.length;i++){ const it=String(cr[i][2]||'').trim(); if(!it)continue; const qty=num(cr[i][22]), tot=num(cr[i][25]); if(tot<=0&&qty<=0)continue; priceCols.forEach((ci,si)=>sites[si].total+=num(cr[i][ci])); items.push([it,qty,tot]); }
-      if(items.length){ DS.catering={headers:['Item','Qty','Total cost'],rows:items}; DS.cateringsites={headers:['Site','Total cost'],rows:sites.filter(s=>s.total>0).map(s=>[s.name,Math.round(s.total)])}; } } }catch(e){}
+    try{ const csn=(wb.SheetNames||[]).find(n=>/sites?\s*catering/i.test(n)); if(csn){ const pc=parseCateringAoa(XLSX.utils.sheet_to_json(wb.Sheets[csn],{header:1,raw:true,defval:''})); if(pc){ DS.catering=pc.catering; DS.cateringsites=pc.cateringsites; } } }catch(e){}
     try{ const asn2=(wb.SheetNames||[]).find(n=>/system\s*one/i.test(n)); if(asn2){ const ar=XLSX.utils.sheet_to_json(wb.Sheets[asn2],{header:1,raw:true,defval:''}); const nc=[5,7,9,11,13,15,17,19,21]; const recs=[];
       for(let i=1;i<ar.length;i++){ const r=ar[i]||[]; const id=String(r[0]==null?'':r[0]).trim(); if(!id||id==='0')continue; const d0=toDate(r[1]); if(!d0)continue; const dt=Math.floor((Date.UTC(d0.getUTCFullYear(),d0.getUTCMonth(),d0.getUTCDate())-Date.UTC(1899,11,30))/86400000);
         nc.forEach(c=>{ const name=String(r[c]==null?'':r[c]).trim(); const tm=String(r[c+1]==null?'':r[c+1]).trim(); if(!name||name==='0'||/^test$/i.test(name))return; recs.push([dt,name,tm]); }); }
@@ -2681,6 +2757,44 @@ function downloadHtml(){ const wasEdit=document.body.classList.contains('edit');
   show(currentPage);
 }
 
+/* ---------- Edit layout: remove / restore any card or KPI tile on every tab, and add new cards ---------- */
+function _ckTitle(card){ const h=card.querySelector(':scope > h3'); return h?h.textContent.replace(/\s+/g,' ').trim():''; }
+function _isTopCard(c){ return !c.classList.contains('cbuild')&&!(c.parentElement&&c.parentElement.closest('.card')); }
+function _hideEl(e,on){ e.style.display=on?'none':''; e.classList.toggle('chidden',!!on); }
+function decorateCards(pg){ const wrap=document.getElementById('wrap'); if(!wrap||pg==='update') return;
+  const cards=[...wrap.querySelectorAll('.card')].filter(_isTopCard);
+  cards.forEach((c,i)=>{ const t=_ckTitle(c); const cv=c.querySelector('canvas[id]'), tb=c.querySelector('tbody[id]'), kp=c.querySelector('.kpis[id]');
+    const sid=cv?('c:'+cv.id):tb?('b:'+tb.id):kp?('k:'+kp.id):(t?('t:'+t):('i:'+i)); const k=pg+':'+sid; c.dataset.ckey=k;
+    if(CARDHIDDEN[k]) _hideEl(c,true);
+    if(!c.querySelector(':scope > .cardx')){ const b=el('button','cardx','✕ Remove'); b.type='button'; b.title='Remove this card from the tab';
+      b.onclick=e=>{ e.stopPropagation(); CARDHIDDEN[k]=t||('Card '+(i+1)); saveState(); _hideEl(c,true); layoutBar(pg); }; c.appendChild(b); } });
+  decorateKpis(pg); layoutBar(pg); }
+function decorateKpis(pg){ const wrap=document.getElementById('wrap'); if(!wrap) return;
+  wrap.querySelectorAll('.kpi').forEach(t=>{ const labEl=t.querySelector('.lab'); const lab=labEl?labEl.textContent.replace(/\s+/g,' ').trim():''; if(!lab) return;
+    const k=pg+':k:'+lab; if(CARDHIDDEN[k]) _hideEl(t,true);
+    if(!t.querySelector(':scope > .kpix')){ const b=el('button','kpix','✕'); b.type='button'; b.title='Remove this tile';
+      b.onclick=e=>{ e.stopPropagation(); CARDHIDDEN[k]=lab+' (tile)'; saveState(); _hideEl(t,true); layoutBar(pg); }; t.appendChild(b); } }); }
+function layoutBar(pg){ const wrap=document.getElementById('wrap'); if(!wrap) return;
+  let bar=wrap.querySelector(':scope > .layoutbar'); if(!bar){ bar=el('div','layoutbar'); wrap.insertBefore(bar,wrap.firstChild); }
+  const removed=Object.keys(CARDHIDDEN).filter(k=>k.indexOf(pg+':')===0&&CARDHIDDEN[k]);
+  const lbl=k=>typeof CARDHIDDEN[k]==='string'?CARDHIDDEN[k]:k.slice(pg.length+1).replace(/^(t|k|i|c|b):/,'');
+  bar.innerHTML=`<b>Edit layout</b><span class="cap">Click <b>✕</b> on any card or tile to remove it. Drag the edges to resize.</span>
+    <div class="addwrap"><button type="button" class="btn solar" data-a="add">＋ Add card ▾</button>
+      <div class="addpanel"><div class="cap" style="margin-bottom:6px">${removed.length?'Put back a removed card or tile:':'No removed cards on this tab.'}</div>
+        ${removed.map(k=>`<button type="button" class="btn addrow" data-k="${esc(k)}">↺ ${esc(lbl(k))}</button>`).join('')}
+        <button type="button" class="btn addrow addnew" data-a="new">＋ New chart from the workbook…</button></div></div>
+    ${removed.length?`<button type="button" class="btn" data-a="all">↺ Restore all (${removed.length})</button>`:''}
+    <button type="button" class="btn" data-a="done">✓ Done</button>`;
+  const panel=bar.querySelector('.addpanel');
+  bar.querySelector('[data-a="add"]').onclick=e=>{ e.stopPropagation(); panel.classList.toggle('open'); };
+  bar.querySelectorAll('.addrow[data-k]').forEach(b=>b.onclick=()=>{ delete CARDHIDDEN[b.getAttribute('data-k')]; saveState(); show(pg); });
+  bar.querySelector('[data-a="new"]').onclick=()=>{ panel.classList.remove('open'); const cb=wrap.querySelector('.cbuild'); if(cb){ cb.classList.add('cbflash'); cb.scrollIntoView({behavior:'smooth',block:'start'}); setTimeout(()=>cb.classList.remove('cbflash'),1800); } };
+  const all=bar.querySelector('[data-a="all"]'); if(all) all.onclick=()=>{ removed.forEach(k=>delete CARDHIDDEN[k]); saveState(); show(pg); };
+  bar.querySelector('[data-a="done"]').onclick=()=>{ document.body.classList.remove('editcards','ovedit'); };
+  if(!bar._close){ bar._close=true; document.addEventListener('click',()=>panel.classList.remove('open')); } }
+(function(){ const wrap=document.getElementById('wrap'); if(!wrap||typeof MutationObserver==='undefined') return; let q=false;
+  new MutationObserver(()=>{ if(q) return; q=true; requestAnimationFrame(()=>{ q=false; try{ decorateKpis(currentPage); }catch(e){} }); }).observe(wrap,{childList:true,subtree:true}); })();
+
 /* ---------- navigation & top-bar wiring ---------- */
 const navEl=document.getElementById('nav');
 const sideEl=document.getElementById('side');
@@ -2700,7 +2814,7 @@ const PAGE_META={
   catering:['Sites catering','Catering cost per site'],
   kstd:['Catering standards','Standard catering quantities & costs per person'],
   budget:['Budget','Estimated vs actual OPEX/CAPEX'],
-  pr:['PR','Purchase requests and their linked POs'],
+  pr:['PR','Purchase requests by status, company and requester'],
   assetsdata:['Assets Data','Tagged company assets by category & site'],
   ppmlog:['PPM Log','Maintenance visits — planned & completed'],
   pest:['Pest Control','Pest control visits by site'],
@@ -2724,6 +2838,7 @@ function show(pg){
   try{ renderCustom(pg,wrap); }catch(e){}
   applyLabels(pg);
   injectCustomColumns();
+  try{ decorateCards(pg); }catch(e){}
   if(window.innerWidth<=900){ if(sideEl)sideEl.classList.remove('open'); if(scrimEl)scrimEl.classList.remove('on'); }
 }
 if(navEl) navEl.querySelectorAll('a[data-pg]').forEach(a=>a.onclick=()=>show(a.dataset.pg));
