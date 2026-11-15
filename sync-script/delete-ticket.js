@@ -119,6 +119,7 @@ async function main() {
   }
   const ticketId = (fields.ticketId || '').trim();
   if (!ticketId) throw new Error('No ticketId in issue body.');
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(ticketId)) throw new Error('Ticket ID has an unexpected format.');
 
   console.log('Authenticating with Microsoft Graph (app-only)...');
   const token = await getAppToken();

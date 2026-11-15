@@ -59,8 +59,16 @@ async function findRow(token, driveId, itemId, ticketId) {
   return null;
 }
 
+// Only addresses on these domains get notification mail from the FM mailbox.
+const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || 'karmsolar.com')
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+function isAllowedEmail(email) {
+  const m = /^[^\s@<>"']+@([^\s@<>"']+)$/.exec(String(email || '').trim());
+  return !!m && ALLOWED_EMAIL_DOMAINS.includes(m[1].toLowerCase());
+}
+
 async function sendNotificationEmail(token, toEmail, toName, subject, htmlBody) {
-  if (!toEmail) return;
+  if (!isAllowedEmail(toEmail)) { if (toEmail) console.log('Skipping requester email: address not on an allowed domain.'); return; }
   const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
   const res = await fetch(url, {
     method: 'POST',
@@ -183,6 +191,7 @@ async function main() {
   const ticketId = (fields.ticketId || '').trim();
   const status = (fields.status || '').trim();
   if (!ticketId) throw new Error('No ticketId in issue body.');
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(ticketId)) throw new Error('Ticket ID has an unexpected format.');
   if (!VALID_STATUSES.includes(status)) throw new Error(`Invalid status: ${status}`);
 
   console.log('Authenticating with Microsoft Graph (app-only)...');
@@ -208,7 +217,7 @@ async function main() {
     await sendNotificationEmail(
       token, requesterEmail, requesterName,
       `Status updated: ${title}`,
-      `<p>Hi ${requesterName || ''},</p><p>Your ticket <b>${ticketId} — ${title}</b> status changed to <b>${status}</b>.</p>`
+      `<p>Hi ${esc(requesterName)},</p><p>Your ticket <b>${esc(ticketId)} — ${esc(title)}</b> status changed to <b>${esc(status)}</b>.</p>`
     );
     await sendTeamEmail(
       token,

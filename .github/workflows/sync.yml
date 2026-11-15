@@ -29,7 +29,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: sync-script
-        run: npm install --no-save xlsx
+        run: npm install --no-save https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz  # npm "xlsx" is unmaintained & has known CVEs
 
       - name: Prepare ticket data branch
         run: |

@@ -16,6 +16,31 @@ const REPO = process.env.GITHUB_REPOSITORY; // "owner/repo", provided by Actions
 const ISSUE_NUMBER = process.env.ISSUE_NUMBER;
 const ISSUE_BODY = process.env.ISSUE_BODY;
 
+// ---- Input hardening -----------------------------------------------------------------------
+// Ticket fields come from a public, sign-in-free form, so treat every value as untrusted.
+const MAX_LEN = { title: 200, description: 5000, category: 80, priority: 40, site: 120, requesterName: 120, requesterEmail: 254 };
+// Only addresses on these domains ever get an email from the FM mailbox, so the form
+// can't be used to send company-branded mail to arbitrary outside addresses.
+const ALLOWED_EMAIL_DOMAINS = (process.env.ALLOWED_EMAIL_DOMAINS || 'karmsolar.com')
+  .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+function isAllowedEmail(email) {
+  const m = /^[^\s@<>"']+@([^\s@<>"']+)$/.exec(String(email || '').trim());
+  return !!m && ALLOWED_EMAIL_DOMAINS.includes(m[1].toLowerCase());
+}
+// Excel treats a cell that starts with = + - @ (or tab / CR) as a formula. Prefix those
+// with an apostrophe so a submitted value is always stored as plain text.
+function cellText(v, key) {
+  let s = String(v == null ? '' : v).replace(/\u0000/g, '');
+  if (MAX_LEN[key]) s = s.slice(0, MAX_LEN[key]);
+  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+}
+function cleanFields(raw) {
+  const out = {};
+  for (const k of Object.keys(MAX_LEN)) out[k] = cellText(raw && raw[k], k);
+  out.requesterEmail = out.requesterEmail.trim();
+  return out;
+}
+
 async function getAppToken() {
   const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
@@ -114,13 +139,13 @@ async function sendTeamEmail(token, subject, htmlBody, excludeEmail) {
 // sendMail pattern used for status-change notifications in update-status.js.
 // A failed confirmation email should never fail the whole submission.
 async function sendConfirmationEmail(token, toEmail, toName, ticketId, title) {
-  if (!toEmail) return;
+  if (!isAllowedEmail(toEmail)) { if (toEmail) console.log('Skipping confirmation email: address not on an allowed domain.'); return; }
   const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
   const subject = `Ticket submitted: ${ticketId}`;
-  const htmlBody = `<p>Hi ${toName || ''},</p>
+  const htmlBody = `<p>Hi ${esc(toName)},</p>
 <p>Your request has been received and recorded.</p>
-<p><b>Ticket number:</b> ${ticketId}<br>
-<b>Subject:</b> ${title || ''}</p>
+<p><b>Ticket number:</b> ${esc(ticketId)}<br>
+<b>Subject:</b> ${esc(title)}</p>
 <p>We'll email you again as its status changes. You can also check its status any time on the
 <a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">ticket board</a>.</p>`;
   try {
@@ -176,6 +201,8 @@ async function main() {
   } catch (e) {
     throw new Error('Issue body was not valid JSON: ' + e.message);
   }
+  fields = cleanFields(fields);
+  if (!fields.title || !fields.description) throw new Error('Ticket is missing a title or description.');
 
   console.log('Authenticating with Microsoft Graph (app-only)...');
   const token = await getAppToken();

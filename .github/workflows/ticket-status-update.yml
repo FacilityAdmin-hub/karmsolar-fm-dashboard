@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   update-status:
-    if: startsWith(github.event.issue.title, 'UpdateStatus:')
+    # Only issues opened by the ticket proxy's own account (the repo owner) may change data.
+    # The repo is public, so without this check anyone with a GitHub account could open a
+    # 'UpdateStatus:' issue and write to / delete from the FM Tickets workbook.
+    if: startsWith(github.event.issue.title, 'UpdateStatus:') && github.event.issue.user.login == github.repository_owner
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>KarmSolar FM & Admin — Ticket Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --navy:#0f2a3d; --green:#1b7a4a; --green-dark:#145c38;
@@ -11,7 +13,7 @@
     --danger:#c0392b; --warn:#c6820f; --radius:10px;
   }
   *{box-sizing:border-box;}
-  body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);}
+  body{margin:0;font-family:'Inter','Cairo',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;-webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text);}
   header{background:linear-gradient(135deg,var(--navy),var(--green-dark));color:#fff;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}
   .headerLeft{display:flex;align-items:center;gap:14px;}
   .logoChip{display:inline-flex;align-items:center;background:#fff;border-radius:8px;padding:5px 12px;box-shadow:0 2px 6px rgba(0,0,0,.15);flex-shrink:0;}
@@ -409,7 +411,7 @@ function renderTable(list){
       <td>${escapeHtml(t['Date Submitted'])}</td>
       <td><b>${escapeHtml(t['Title'])}</b><div style="color:var(--muted);font-size:.75rem;margin-top:2px;">${escapeHtml((t['Description']||'').slice(0,80))}</div></td>
       <td>${escapeHtml(t['Category'])}</td>
-      <td><span class="pill pri-${t['Priority']}">${escapeHtml(t['Priority'])}</span></td>
+      <td><span class="pill pri-${escapeHtml(t['Priority'])}">${escapeHtml(t['Priority'])}</span></td>
       <td>${escapeHtml(t['Site / Location'])}</td>
       <td>${escapeHtml(t['Requester Name'])}<div style="color:var(--muted);font-size:.72rem;">${escapeHtml(t['Requester Email'])}</div></td>
       <td>${statusSelectHtml(t)}</td>
@@ -442,7 +444,7 @@ function renderKanban(list){
     const items = list.filter(t=>t['Status']===s);
     return `<div class="col"><h3>${s} <span>${items.length}</span></h3>${items.map(t=>{
       const id = escapeHtml(t['Ticket ID']);
-      return `<div class="cardT pri-${t['Priority']} clickableCard" data-open-id="${id}">
+      return `<div class="cardT pri-${escapeHtml(t['Priority'])} clickableCard" data-open-id="${id}">
         <h4>${escapeHtml(t['Title'])}</h4>
         <div class="meta">${id} · ${escapeHtml(t['Category'])} · ${escapeHtml(t['Site / Location'])}<br>${escapeHtml(t['Requester Name'])}</div>
         <div class="cardActions">${statusSelectHtml(t)} <button class="deleteBtn" data-id="${id}" data-title="${escapeHtml(t['Title'])}">Delete</button></div>
@@ -461,6 +463,8 @@ function renderKanban(list){
   });
 }
 
+// Only allow http(s) links in attachment URLs — blocks javascript:/data: links planted in ticket data.
+function safeUrl(u){ try{ const x=new URL(String(u||''), location.href); return /^https?:$/.test(x.protocol) ? x.href : '#'; }catch(e){ return '#'; } }
 function escapeHtml(s){ return (s==null?'':s).toString().replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 function showToast(msg){
@@ -556,7 +560,7 @@ function renderModal(id){
     <div class="detailGrid">
       <div class="full" style="text-align:right;"><button class="btnGreen" id="editTicketBtn" type="button">Edit ticket</button></div>
       <div><label>Status</label><div class="val">${statusSelectHtml(t)}</div></div>
-      <div><label>Priority</label><div class="val"><span class="pill pri-${t['Priority']}">${escapeHtml(t['Priority'])}</span></div></div>
+      <div><label>Priority</label><div class="val"><span class="pill pri-${escapeHtml(t['Priority'])}">${escapeHtml(t['Priority'])}</span></div></div>
       <div><label>Category</label><div class="val">${escapeHtml(t['Category'])}</div></div>
       <div><label>Site / Location</label><div class="val">${escapeHtml(t['Site / Location'])}</div></div>
       <div><label>Requester</label><div class="val">${escapeHtml(t['Requester Name'])}<br>${escapeHtml(t['Requester Email'])}</div></div>
@@ -572,7 +576,7 @@ function renderModal(id){
   const items = (commentsByTicket[id] || []);
   const commentsHtml = items.length ? items.map((c, ci)=>{
     if (c['Type'] === 'Attachment'){
-      return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])} · attached a file</div>📎 <a href="${escapeHtml(c['AttachmentURL'])}" target="_blank" rel="noopener">${escapeHtml(c['Content'])}</a></div>`;
+      return `<div class="commentItem"><div class="commentMeta">${escapeHtml(c['Author'])} · ${escapeHtml(c['Timestamp'])} · attached a file</div>📎 <a href="${escapeHtml(safeUrl(c['AttachmentURL']))}" target="_blank" rel="noopener noreferrer">${escapeHtml(c['Content'])}</a></div>`;
     }
     if (c['Type'] === 'Status'){
       return `<div class="commentItem" style="background:#eef4fb;"><div class="commentMeta">${escapeHtml(c['Timestamp'])}</div>🔄 <em>${escapeHtml(c['Content'])}</em></div>`;
