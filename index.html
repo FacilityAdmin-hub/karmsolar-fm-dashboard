@@ -1438,7 +1438,7 @@ PG.pr=function(w){ const rows=DS.pr.rows; const norm=x=>String(x==null?'':x).tri
   const dimOf=(p,k)=>k==='month'?(p.d?mKey(p.d):'—'):p[k];
   const dimLab=(k,v)=>k==='month'&&v!=='—'?mLabel(v):v;
   const R=st=>P.filter(p=>inSel(st.sel,p.state)&&_inRange(p.d,st.f,st.t)||(!p.d&&!st.f&&!st.t&&inSel(st.sel,p.state)));
-  const stColor=s=>/approv/i.test(s)?C.green:/draft/i.test(s)?'#7E8B95':/department/i.test(s)?C.solar:/waiting/i.test(s)?C.violet:/reject|cancel/i.test(s)?C.red:C.psoft;
+  const stColor=s=>/waiting/i.test(s)?C.violet:/^approved$/i.test(s)?C.green:/draft/i.test(s)?'#7E8B95':/department/i.test(s)?C.solar:/reject|cancel/i.test(s)?C.red:C.psoft;
   const pal=[C.solar,C.petrol,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95','#3FB6A8','#B86BD6','#D98C3F','#5C7CFA'];
   const colorFor=(k,v,i)=>k==='state'?stColor(v):pal[i%pal.length];
   const group=(list,k)=>{ const m={}; list.forEach(p=>{ const v=dimOf(p,k); m[v]=(m[v]||0)+1; }); let e=Object.entries(m); if(k==='month') e.sort((a,b)=>a[0]<b[0]?-1:1); else if(k==='state') e.sort((a,b)=>STAT.indexOf(a[0])-STAT.indexOf(b[0])); else e.sort((a,b)=>b[1]-a[1]); return e; };
@@ -1457,8 +1457,8 @@ PG.pr=function(w){ const rows=DS.pr.rows; const norm=x=>String(x==null?'':x).tri
   const nameOf=k=>({state:'status',co:'company',by:'requester',title:'title',month:'month'})[k]||k;
   const setT=(id,txt)=>{ const h=w.querySelector('#'+id); if(h&&LABELS[currentPage+'__'+id]==null) h.textContent=txt; };
   wireCardCtl(w,'prk',STAT,wopt('state'),st=>{ const rs=R(st); const cnt=re=>rs.filter(p=>re.test(p.state)).length;
-    const app=cnt(/approv/i), pend=cnt(/department|waiting/i), dr=cnt(/draft/i);
-    const top=group(rs,st.cmp)[0];
+    const app=cnt(/^approved$/i), pend=cnt(/department|waiting/i), dr=cnt(/draft/i);
+    const top=group(rs,st.cmp).slice().sort((a,b)=>b[1]-a[1])[0];
     w.querySelector('#prKpis').innerHTML=
       kpi('Total PRs',rs.length,'',st.sel.length?'selected statuses':'purchase requests','p')+
       kpi('Approved',app,'',rs.length?Math.round(app/rs.length*100)+'% of PRs':'0%','g')+
