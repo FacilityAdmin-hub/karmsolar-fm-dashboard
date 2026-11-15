@@ -46,7 +46,7 @@ const SPEC = {
   sand: { name: 'Sand Admin Budget', cols: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,28], valid: c => String(c[0] || '').trim() !== '' },
   capex: { name: 'CAPEX', cols: [0,1,2,3,5,6,7,8], valid: c => String(c[0] || '').trim() !== '' },
   actual: { name: 'Actual expenses Budget 2.0', cols: [0,1,2,3,4,5,6,7,8,9,10,11,12,13], valid: c => String(c[0] || '').trim() !== '' },
-  pr: { name: 'PR ', cols: [0,1,2,3], valid: c => String(c[0] || '').trim() !== '' },
+  pr: { name: 'PR ', cols: [0,1,2,3,4,5], valid: c => String(c[0] || '').trim() !== '' },
   assetsdata: { name: 'Assets Data', cols: [0,1,2,3,4], valid: c => String(c[0] || '').trim() !== '' },
   ppmlog: { name: 'PPM Log', headerRow: 2, cols: [0,1,2,3,4,5,6,7,8,9,10,11,12], valid: c => String(c[1] || '').trim() !== '' && !/example row/i.test(String(c[11] || '')) },
   pest: { name: 'Pest Control Tracker', cols: [0,1,2], valid: c => String(c[0] || '').trim() !== '' }
@@ -239,30 +239,32 @@ function extractBloatedWater(buf) {
 // Ported exactly from dash.html's applyWorkbook() inline logic. The sheet has one row
 // per item with per-site cost columns spread across it (not a simple table), so this
 // can't go through the generic extractSheet() path.
+function parseCateringAoa(cr){
+  const hdr=(cr[0]||[]).map(h=>String(h==null?'':h).replace(/\s+/g,' ').trim());
+  const low=hdr.map(h=>h.toLowerCase());
+  const sites=[]; let c=3;
+  while(c<hdr.length&&hdr[c]&&low[c]!=='code'){ const nm=hdr[c]; const staff=(nm.match(/(\d+)\s*staff/i)||[])[1];
+    const pair=(hdr[c+1]===nm); sites.push({name:nm.replace(/\s*-?\s*\d+\s*staff\s*$/i,'').trim().slice(0,40)||('Site '+(sites.length+1)),qc:c,pc:pair?c+1:-1,staff:staff?+staff:0,qty:0,cost:0}); c+=pair?2:1; }
+  const fi=re=>low.findIndex((h,i)=>i>c&&re.test(h));
+  const tq=fi(/^in totals?$/), up=fi(/^price$/), tp=fi(/total price/);
+  const items=[];
+  for(let i=1;i<cr.length;i++){ const row=cr[i]||[]; const it=String(row[2]==null?'':row[2]).trim(); if(!it)continue;
+    const per=sites.map(s=>num(row[s.qc]));
+    const perCost=sites.map(s=>s.pc>=0?num(row[s.pc]):0);
+    let qty=per.reduce((a,b)=>a+b,0); if(tq>=0&&num(row[tq])>qty)qty=num(row[tq]);
+    let tot=perCost.reduce((a,b)=>a+b,0); if(tp>=0&&num(row[tp])>tot)tot=num(row[tp]);
+    const price=up>=0?num(row[up]):0; if(tot<=0&&price>0)tot=price*qty;
+    if(qty<=0&&tot<=0)continue;
+    sites.forEach((s,si)=>{ s.qty+=per[si]; s.cost+=perCost[si]>0?perCost[si]:(price>0?price*per[si]:0); });
+    items.push([it,qty,Math.round(tot),String(row[1]==null?'':row[1]).trim()].concat(per)); }
+  if(!items.length)return null;
+  return {catering:{headers:['Item','Qty','Total cost','Code'].concat(sites.map(s=>s.name)),rows:items},
+          cateringsites:{headers:['Site','Total cost','Qty','Staff'],rows:sites.map(s=>[s.name,Math.round(s.cost),s.qty,s.staff])}}; }
 function extractCatering(wb) {
   try {
     const csn = (wb.SheetNames || []).find(n => /sites?\s*catering/i.test(n));
     if (!csn) return null;
-    const cr = XLSX.utils.sheet_to_json(wb.Sheets[csn], { header: 1, raw: false, defval: '' });
-    const hdr = cr[0] || [];
-    const priceCols = [4, 6, 8, 10, 12, 14, 16, 18];
-    const sites = priceCols.map(ci => ({ name: String(hdr[ci - 1] || hdr[ci] || ('Site ' + ci)).replace(/\s+/g, ' ').trim().slice(0, 26), total: 0 }));
-    const items = [];
-    for (let i = 1; i < cr.length; i++) {
-      const row = cr[i] || [];
-      const it = String(row[2] || '').trim();
-      if (!it) continue;
-      const qty = num(row[22]);
-      const tot = num(row[25]);
-      if (tot <= 0 && qty <= 0) continue;
-      priceCols.forEach((ci, si) => { sites[si].total += num(row[ci]); });
-      items.push([it, qty, tot]);
-    }
-    if (!items.length) return null;
-    return {
-      catering: { headers: ['Item', 'Qty', 'Total cost'], rows: items },
-      cateringsites: { headers: ['Site', 'Total cost'], rows: sites.filter(s => s.total > 0).map(s => [s.name, Math.round(s.total)]) }
-    };
+    return parseCateringAoa(XLSX.utils.sheet_to_json(wb.Sheets[csn], { header: 1, raw: true, defval: '' }));
   } catch (e) { return null; }
 }
 
