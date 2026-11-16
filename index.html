@@ -473,6 +473,24 @@ body.lite .card{transition:none!important}
 .cc-link:hover{opacity:1}
 td.cc-linked{font-size:12.5px;background:rgba(79,209,197,.05);white-space:nowrap}
 @media(max-width:600px){.cc-row{grid-template-columns:1fr}}
+
+/* ---- export to Excel dialog ---- */
+.xl-modal{max-width:620px;width:calc(100vw - 32px);padding:0;overflow:hidden}
+.xl-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:16px 20px}
+.xl-head h2{margin:0;font-size:18px;color:#fff}
+.xl-sub{font-size:12px;color:rgba(255,255,255,.75);margin-top:4px;max-width:470px}
+.xl-x{background:none;border:0;color:#fff;font-size:24px;line-height:1;cursor:pointer;padding:0 4px}
+.xl-body{padding:16px 20px 20px;display:flex;flex-direction:column;gap:12px}
+.xl-tools{display:flex;gap:8px;align-items:center}
+.xl-count{margin-left:auto;font-size:12px;color:var(--muted)}
+.xl-list{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;max-height:340px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.xl-opt{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 2px;cursor:pointer}
+.xl-opt em{font-style:normal;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--solar);margin-left:auto}
+.xl-raw{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--ink-soft);cursor:pointer}
+.xl-status{font-size:12.5px;color:var(--ink-soft);min-height:17px}
+.xl-act{display:flex;justify-content:flex-end;gap:10px}
+.xl-busy .xl-list,.xl-busy .xl-tools,.xl-busy .xl-raw{opacity:.5;pointer-events:none}
+@media(max-width:600px){.xl-list{grid-template-columns:1fr}}
 </style>
 </head>
 <body id="artifacts-component-root-html">
@@ -2893,7 +2911,7 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
 })();
 
 /* ===================== Live refresh: pick up newly synced data without reloading ===================== */
-const BUILD_ID='2026-11-12-v6';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+const BUILD_ID='2026-11-16-v7';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
 (function(){
   if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
   const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],utensils:['utensils'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog'],pest:['pest']};
@@ -2992,6 +3010,7 @@ const BUILD_ID='2026-11-12-v6';   /* change this whenever the dashboard CODE cha
 
   /* numbers count up when a tab opens */
   function countUp(root){
+    if(window.__NOANIM) return;
     if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     root.querySelectorAll('.kpi .val').forEach(v=>{
       const tn=[...v.childNodes].find(n=>n.nodeType===3&&/\d/.test(n.nodeValue)); if(!tn) return;
@@ -3026,6 +3045,254 @@ const BUILD_ID='2026-11-12-v6';   /* change this whenever the dashboard CODE cha
       requestAnimationFrame(probe); }catch(e){} },900);
   }catch(e){}
 })();
+</script>
+<script>
+/* ===================== Export to Excel: pick tabs, every card with its data ===================== */
+const XL_SKIP_PAGES={procurement:1,assetguide:1,sop:1};           /* PDF viewer tabs have no data */
+function xlTabs(){
+  return [...document.querySelectorAll('#nav a[data-pg]')].map(a=>({pg:a.dataset.pg,name:((a.querySelector('.nl')||a).textContent||a.dataset.pg).replace(/\s+/g,' ').trim()}))
+    .filter(t=>PG[t.pg]&&!XL_SKIP_PAGES[t.pg]);
+}
+function xlClean(s){ return String(s==null?'':s).replace(/[✕✖☰]/g,'').replace(/\s+/g,' ').trim(); }
+function xlText(el){ if(!el) return ''; const c=el.cloneNode(true); c.querySelectorAll('button,.cardbar,.ippanel,select,.kpix,.cardx,script,style,.cc-link,.cc-rm').forEach(x=>x.remove()); return xlClean(c.textContent); }
+function xlCellText(td){
+  const inp=td.querySelector('input,textarea'); if(inp&&td.textContent.trim()==='') return inp.value||'';
+  const sel=td.querySelector('select'); if(sel&&td.textContent.trim()===(sel.textContent||'').trim()) return sel.selectedOptions[0]?sel.selectedOptions[0].textContent:'';
+  return xlText(td);
+}
+function xlTable(table){
+  const hr=[...table.querySelectorAll('thead tr')].pop(); if(!hr) return null;
+  const ths=[...hr.children]; const keep=[];
+  ths.forEach((th,i)=>{ if(!th.classList.contains('cc-add-th')) keep.push(i); });
+  const head=keep.map(i=>xlText(ths[i].querySelector('.cc-th-name')||ths[i]));
+  const rows=[];
+  table.querySelectorAll('tbody tr').forEach(tr=>{
+    const tds=[...tr.children]; if(tds.length<2) return;              /* "no rows" placeholders */
+    rows.push(keep.map(i=>tds[i]?xlCellText(tds[i]):''));
+  });
+  if(!head.some(Boolean)&&!rows.length) return null;
+  return {kind:'table',head,rows};
+}
+function xlChart(canvas){
+  const ch=(window.Chart&&Chart.getChart)?Chart.getChart(canvas):(typeof charts!=='undefined'?charts[canvas.id]:null);
+  if(!ch||!ch.data) return null;
+  const lab=v=>Array.isArray(v)?v.join(' '):(v==null?'':String(v));
+  const ds=(ch.data.datasets||[]).filter(d=>!d.hidden);
+  if(!ds.length) return null;
+  const pointish=ds.some(d=>(d.data||[]).some(p=>p&&typeof p==='object'));
+  if(pointish){
+    const head=[(ch.options&&ch.options.scales&&ch.options.scales.x&&ch.options.scales.x.title&&ch.options.scales.x.title.text)||'X'];
+    const xs=[]; const seen=new Map();
+    ds.forEach(d=>(d.data||[]).forEach(p=>{ const x=p&&typeof p==='object'?lab(p.x):''; if(!seen.has(x)){ seen.set(x,xs.length); xs.push(x); } }));
+    ds.forEach(d=>head.push(xlClean(d.label)||'Value'));
+    const rows=xs.map(x=>[x,...ds.map(()=> '')]);
+    ds.forEach((d,j)=>(d.data||[]).forEach(p=>{ if(p&&typeof p==='object') rows[seen.get(lab(p.x))][j+1]=p.y; }));
+    return {kind:'chart',head,rows};
+  }
+  const labels=(ch.data.labels||[]).map(lab);
+  const n=Math.max(labels.length,...ds.map(d=>(d.data||[]).length));
+  const head=['Category',...ds.map((d,j)=>xlClean(d.label)||(ds.length>1?'Series '+(j+1):'Value'))];
+  const isTime=ds.map(d=>/check-?in|time|arrival/i.test(String(d.label||''))&&(d.data||[]).every(v=>v==null||(typeof v==='number'&&v>=0&&v<1440)));
+  const rows=[]; for(let i=0;i<n;i++) rows.push([labels[i]==null?'':labels[i],...ds.map((d,j)=>{ const v=(d.data||[])[i]; if(v==null) return ''; return isTime[j]?{t:'time',v:v/1440}:v; })]);
+  return {kind:'chart',head,rows};
+}
+function xlKpis(root){
+  const rows=[...root.querySelectorAll('.kpi')].map(k=>[xlText(k.querySelector('.lab')),xlText(k.querySelector('.val')),xlText(k.querySelector('.meta'))]).filter(r=>r[0]||r[1]);
+  return rows.length?{kind:'kpis',head:['Measure','Value','Note'],rows}:null;
+}
+function xlBars(card){
+  const rows=[]; let hasNote=false;
+  card.querySelectorAll('.bar-row').forEach(b=>{ if(b.closest('table')) return;
+    const nm=xlText(b.querySelector('.nm')), v=xlText(b.querySelector('.pct,.val,.num'))||xlText(b).replace(nm,'').trim();
+    let note=''; const nx=b.nextElementSibling; if(nx&&nx.classList.contains('cap')&&!nx.classList.contains('bar-row')){ note=xlText(nx); hasNote=true; }
+    rows.push([nm,v,note]); });
+  if(!rows.length) return null;
+  return {kind:'list',head:hasNote?['Item','Value','Details']:['Item','Value'],rows:hasNote?rows:rows.map(r=>r.slice(0,2))};
+}
+function xlCard(card){
+  if(card.classList.contains('cbuild')||card.querySelector('iframe,embed,object')) return null;
+  const parts=[];
+  const k=xlKpis(card); if(k) parts.push(k);
+  card.querySelectorAll('canvas').forEach(c=>{ const p=xlChart(c); if(p) parts.push(p); });
+  const b=xlBars(card); if(b) parts.push(b);
+  card.querySelectorAll('table').forEach(t=>{ const p=xlTable(t); if(p) parts.push(p); });
+  const h=card.querySelector('h3,h2'); const cap=card.querySelector(':scope > p.cap');
+  if(!parts.length){ const tx=xlText(card); if(!tx) return null; return {title:xlText(h)||'Note',cap:'',parts:[{kind:'note',text:tx.replace(xlText(h),'').trim()}]}; }
+  return {title:xlText(h),cap:xlText(cap),parts};
+}
+/* every block on the page that is open right now, in screen order */
+function xlCollect(){
+  const wrap=document.getElementById('wrap'); const out=[]; let lastHead='';
+  wrap.querySelectorAll('.sec-title,.kpis,.card').forEach(el=>{
+    if(el.parentElement&&el.parentElement.closest('.card,.kpis')) return;
+    if(el.classList.contains('sec-title')){ lastHead=xlText(el.querySelector('h2,h3,b')||el).split(/ {2,}/)[0]; return; }
+    if(el.classList.contains('kpis')){ const k=xlKpis(el); if(k) out.push({title:'Key figures',cap:'',parts:[k]}); return; }
+    const c=xlCard(el); if(!c) return;
+    if(!c.title){ c.title=c.parts[0].kind==='kpis'?'Key figures':(lastHead||(c.parts[0].kind==='table'?'Table':'Card')); }
+    lastHead=''; out.push(c);
+  });
+  return out;
+}
+/* text from the screen -> a real Excel value */
+const XL_MON={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function xlValue(v){
+  if(v&&typeof v==='object'&&v.t==='time') return {v:v.v,f:'hh:mm'};
+  if(typeof v==='number'){ if(!isFinite(v)) return {v:''}; const r=Math.round(v*100)/100; return {v:r,f:Number.isInteger(r)?'#,##0':'#,##0.00'}; }
+  const s=String(v==null?'':v).trim(); if(!s||s==='\u2014'||s==='-') return {v:''};
+  let m=s.match(/^(EGP\s*)?(-?[\d,]*\.?\d+)\s*([KkMm])?$/);
+  if(m&&/\d/.test(m[2])&&(!m[2].includes(',')||/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(m[2]))){
+    let n=parseFloat(m[2].replace(/,/g,'')); const mult=m[3]?(/k/i.test(m[3])?1e3:1e6):1;
+    n=Math.round(n*mult*100)/100; const dec=(m[2].split('.')[1]||'').length;
+    if(m[1]) return {v:n,f:m[3]?'"EGP "#,##0':'"EGP "#,##0'+(dec?'.'+'0'.repeat(Math.min(dec,2)):'')};
+    if(/^0\d/.test(m[2])) return {v:s};                                 /* codes with leading zeros stay text */
+    return {v:n,f:(dec&&mult===1)?'#,##0.'+'0'.repeat(Math.min(dec,2)):'#,##0'};
+  }
+  m=s.match(/^(-?\d+(?:\.\d+)?)\s*%$/); if(m) return {v:parseFloat(m[1])/100,f:(m[1].includes('.')?'0.0%':'0%')};
+  m=s.match(/^(\d{1,2}) ([A-Za-z]{3})[a-z]* (\d{4})$/); if(m&&XL_MON[m[2].toLowerCase()]!=null) return {v:new Date(Date.UTC(+m[3],XL_MON[m[2].toLowerCase()],+m[1])),f:'dd mmm yyyy'};
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(m) return {v:new Date(Date.UTC(+m[1],+m[2]-1,+m[3])),f:'dd mmm yyyy'};
+  return {v:s};
+}
+function xlSheetName(name,used){ let b=String(name).replace(/[\[\]\*\?\/\\:]/g,' ').replace(/\s+/g,' ').trim().slice(0,31)||'Sheet'; let n=b,i=2; while(used.has(n.toLowerCase())){ const suf=' ('+(i++)+')'; n=b.slice(0,31-suf.length)+suf; } used.add(n.toLowerCase()); return n; }
+function xlLoadScript(src){ return new Promise((ok,no)=>{ const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=no; document.head.appendChild(s); }); }
+async function xlExcelJS(){
+  if(window.ExcelJS) return window.ExcelJS;
+  for(const u of ['https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js','https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js']){ try{ await xlLoadScript(u); if(window.ExcelJS) return window.ExcelJS; }catch(e){} }
+  return null;
+}
+function xlRawData(){ const nm={payments:'Payments',hk:'H.K Feedback',hkext:'Housekeeping performance Survey',water:'WATER&ELECTRICAL CONSUMP',adminconsumption:'ADMIN consumption STOCK',stock:'Admin current stock',contracts:'contracts',couriers:'courriers',fna:'FNA Budget',sand:'Sand Admin Budget',capex:'CAPEX',actual:'Actual expenses Budget 2.0',pr:'PR ',assetsdata:'Assets Data',ppmlog:'PPM Log',pest:'Pest Control Tracker',sandstock:'Admin current stock Sand',utensils:'Cafeteria utensils',kstd:'Karm standard consumption',catering:'Sites Catering',cateringsites:'Catering by site',attendance:'Staff attendance',hkchecklist:'HK daily checklist'};
+  return Object.keys(DS).map(k=>({name:'Data - '+(nm[k]||k),head:DS[k].headers,rows:DS[k].rows})); }
+/* render each chosen tab, read its cards, then go back to where the user was */
+async function xlBuild(pgs,onStep){
+  const back=currentPage, y=window.scrollY, out=[];
+  try{ if(typeof wbLoad==='function') await wbLoad(); hkFixDates(); }catch(e){}
+  window.__NOANIM=true;
+  try{
+    for(let i=0;i<pgs.length;i++){ const t=pgs[i]; if(onStep) onStep(i,t);
+      show(t.pg); await new Promise(r=>setTimeout(r,40));
+      out.push({tab:t,meta:(PAGE_META[t.pg]||[t.name,''])[1]||'',blocks:xlCollect()});
+    }
+  } finally { show(back); window.__NOANIM=false; window.scrollTo(0,y); }
+  return out;
+}
+async function xlWrite(tabs,withRaw){
+  const stamp=new Date(); const src=(document.getElementById('srcName')||{}).textContent||'';
+  const fname='KarmSolar-Dashboard-'+stamp.toISOString().slice(0,10)+'.xlsx';
+  const raw=withRaw?xlRawData():[]; const used=new Set();
+  tabs.forEach(t=>{ t.sheet=xlSheetName(t.tab.name,used); }); raw.forEach(r=>{ r.sheet=xlSheetName(r.name,used); });
+  const EJ=await xlExcelJS();
+  if(!EJ){                                                          /* plain fallback without styling */
+    const wb=XLSX.utils.book_new();
+    tabs.forEach(t=>{ const aoa=[[t.tab.name],[t.meta],[]]; t.blocks.forEach(b=>{ aoa.push([b.title]); if(b.cap) aoa.push([b.cap]); b.parts.forEach(p=>{ if(p.kind==='note'){ aoa.push([p.text]); } else { aoa.push(p.head); p.rows.forEach(r=>aoa.push(r.map(c=>xlValue(c).v))); } aoa.push([]); }); });
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa,{cellDates:true}),t.sheet); });
+    raw.forEach(r=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([r.head,...r.rows]),r.sheet));
+    XLSX.writeFile(wb,fname); return {file:fname,styled:false};
+  }
+  const wb=new EJ.Workbook(); wb.creator='KarmSolar Admin & FM Dashboard'; wb.created=stamp;
+  const NAVY='FF0F2A3D', SOLAR='FFF4A51C', PALE='FFFFF4DC', GREY='FF6B7785', LINE='FFD9DEE3';
+  const thin={style:'thin',color:{argb:LINE}}; const box={top:thin,left:thin,bottom:thin,right:thin};
+  /* contents sheet */
+  const PRINT={paperSize:9,orientation:'landscape',fitToPage:true,fitToWidth:1,fitToHeight:0,margins:{left:0.4,right:0.4,top:0.5,bottom:0.5,header:0.2,footer:0.2}};
+  const cs=wb.addWorksheet('Contents',{views:[{showGridLines:false}],properties:{tabColor:{argb:SOLAR}},pageSetup:Object.assign({},PRINT,{orientation:'portrait'})});
+  cs.getColumn(1).width=4; cs.getColumn(2).width=38; cs.getColumn(3).width=16; cs.getColumn(4).width=60;
+  cs.getCell('B2').value='KarmSolar · Admin & FM Dashboard'; cs.getCell('B2').font={size:18,bold:true,color:{argb:NAVY}};
+  cs.getCell('B3').value='Exported '+stamp.toLocaleString('en-GB',{dateStyle:'medium',timeStyle:'short'})+(src?'  ·  '+src:''); cs.getCell('B3').font={size:10,color:{argb:GREY}};
+  const ch=cs.getRow(5); ['Sheet','Cards','What it covers'].forEach((h,i)=>{ const c=ch.getCell(i+2); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:NAVY}}; c.border=box; });
+  let cr=6;
+  tabs.concat(raw.map(r=>({sheet:r.sheet,raw:true,rows:r.rows.length}))).forEach(t=>{ const row=cs.getRow(cr++);
+    row.getCell(2).value={text:t.sheet,hyperlink:"#'"+t.sheet.replace(/'/g,"''")+"'!A1"}; row.getCell(2).font={color:{argb:'FF1F6FB2'},underline:true};
+    row.getCell(3).value=t.raw?t.rows+' rows':t.blocks.length; row.getCell(4).value=t.raw?'Raw workbook data':t.meta;
+    [2,3,4].forEach(i=>{ row.getCell(i).border=box; row.getCell(i).alignment={vertical:'top',wrapText:i===4}; }); });
+  /* one sheet per tab */
+  tabs.forEach(t=>{
+    const ws=wb.addWorksheet(t.sheet,{views:[{showGridLines:false}],pageSetup:PRINT}); const widths=[];
+    const fit=(i,s)=>{ const l=String(s==null?'':s).length; widths[i]=Math.max(widths[i]||8,Math.min(60,l+2)); };
+    let r=1;
+    ws.getCell(r,1).value=t.tab.name; ws.getCell(r,1).font={size:16,bold:true,color:{argb:NAVY}}; r++;
+    if(t.meta){ ws.getCell(r,1).value=t.meta; ws.getCell(r,1).font={size:10,color:{argb:GREY}}; r++; }
+    ws.getCell(r,1).value={text:'← Contents',hyperlink:"#'Contents'!A1"}; ws.getCell(r,1).font={size:9,color:{argb:'FF1F6FB2'},underline:true}; r+=2;
+    if(!t.blocks.length){ ws.getCell(r,1).value='No cards on this tab.'; ws.getCell(r,1).font={italic:true,color:{argb:GREY}}; }
+    t.blocks.forEach(b=>{
+      const tc=ws.getCell(r,1); tc.value=b.title; tc.font={size:12,bold:true,color:{argb:NAVY}};
+      const span=Math.max(2,...b.parts.map(p=>p.head?p.head.length:1));
+      for(let i=1;i<=span;i++){ const c=ws.getCell(r,i); c.fill={type:'pattern',pattern:'solid',fgColor:{argb:PALE}}; c.border={bottom:{style:'medium',color:{argb:SOLAR}}}; }
+      r++;
+      if(b.cap){ ws.getCell(r,1).value=b.cap; ws.getCell(r,1).font={italic:true,size:9,color:{argb:GREY}}; r++; }
+      b.parts.forEach(p=>{
+        if(p.kind==='note'){ const c=ws.getCell(r,1); c.value=p.text; c.font={italic:true,color:{argb:GREY}}; r+=2; return; }
+        p.head.forEach((h,i)=>{ const c=ws.getCell(r,i+1); c.value=h; c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:NAVY}}; c.border=box; c.alignment={vertical:'middle',wrapText:true}; fit(i,h); });
+        r++;
+        const dec=[]; p.rows.forEach(row=>row.forEach((v,i)=>{ const x=xlValue(v); if(x.f==='#,##0.00'||(x.f&&x.f.startsWith('#,##0.'))) dec[i]=true; }));
+        p.rows.forEach((row,ri)=>{ row.forEach((v,i)=>{ const x=xlValue(v); if(x.f&&/^#,##0(\.0+)?$/.test(x.f)) x.f=dec[i]?'#,##0.00':'#,##0'; const c=ws.getCell(r,i+1); c.value=x.v===''?null:x.v; if(x.f) c.numFmt=x.f; c.border=box;
+            if(ri%2) c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF7F8FA'}};
+            if(p.kind==='kpis'&&i===1) c.font={bold:true};
+            fit(i,typeof x.v==='number'?(x.f==='hh:mm'?'00:00':String(v).length):(x.v instanceof Date?'00 Mmm 0000':x.v)); }); r++; });
+        r++;
+      });
+      r++;
+    });
+    widths.forEach((w,i)=>{ ws.getColumn(i+1).width=w; });
+    if(!widths[0]||widths[0]<14) ws.getColumn(1).width=Math.max(widths[0]||0,14);
+  });
+  raw.forEach(d=>{ const ws=wb.addWorksheet(d.sheet,{views:[{state:'frozen',ySplit:1}]});
+    ws.addRow(d.head).eachCell(c=>{ c.font={bold:true,color:{argb:'FFFFFFFF'}}; c.fill={type:'pattern',pattern:'solid',fgColor:{argb:NAVY}}; });
+    d.rows.forEach(row=>ws.addRow(row.map(v=>(typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T/.test(v))?new Date(v):v)));
+    d.head.forEach((h,i)=>{ ws.getColumn(i+1).width=Math.min(40,Math.max(10,String(h||'').length+2)); }); });
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=fname; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000);
+  window.__XL_LAST={file:fname,size:buf.byteLength||buf.length};
+  return {file:fname,styled:true};
+}
+/* the "⤓ Excel" dialog */
+function xlDialog(){
+  const tabs=xlTabs(); let pick={}; try{ pick=JSON.parse(localStorage.getItem('xlPick')||'{}'); }catch(e){}
+  const pre=Object.keys(pick).length?pick:{[currentPage]:1};
+  const bg=document.createElement('div'); bg.className='modal-bg';
+  bg.innerHTML=`<div class="modal xl-modal" role="dialog" aria-label="Export to Excel">
+    <div class="modal-h xl-head"><div><h2>Export to Excel</h2><div class="xl-sub">Choose the tabs. Each tab becomes a sheet with every card and its data, as shown on the dashboard.</div></div><button class="xl-x" id="xlX" title="Close">×</button></div>
+    <div class="xl-body">
+      <div class="xl-tools"><button class="btn" id="xlAll">Select all</button><button class="btn" id="xlNone">Clear</button><span class="xl-count" id="xlCount"></span></div>
+      <div class="xl-list">${tabs.map(t=>`<label class="xl-opt"><input type="checkbox" value="${esc(t.pg)}" ${pre[t.pg]?'checked':''}><span>${esc(t.name)}</span>${t.pg===currentPage?'<em>this tab</em>':''}</label>`).join('')}</div>
+      <label class="xl-raw"><input type="checkbox" id="xlRaw"> Also add the raw workbook data (one sheet per source sheet)</label>
+      <div class="xl-status" id="xlStatus"></div>
+      <div class="xl-act"><button class="btn" id="xlCancel">Cancel</button><button class="btn solar" id="xlGo">⤓ Export</button></div>
+    </div></div>`;
+  document.body.appendChild(bg);
+  const $=s=>bg.querySelector(s); const boxes=()=>[...bg.querySelectorAll('.xl-list input')];
+  const count=()=>{ const n=boxes().filter(b=>b.checked).length; $('#xlCount').textContent=n+' of '+tabs.length+' tabs'; $('#xlGo').disabled=!n&&!$('#xlRaw').checked; };
+  let busy=false; const close=()=>{ if(busy) return; bg.remove(); document.removeEventListener('keydown',onKey); };
+  const onKey=e=>{ if(e.key==='Escape') close(); }; document.addEventListener('keydown',onKey);
+  $('#xlX').onclick=close; $('#xlCancel').onclick=close; bg.addEventListener('mousedown',e=>{ if(e.target===bg) close(); });
+  $('#xlAll').onclick=()=>{ boxes().forEach(b=>b.checked=true); count(); }; $('#xlNone').onclick=()=>{ boxes().forEach(b=>b.checked=false); count(); };
+  bg.querySelector('.xl-list').addEventListener('change',count); $('#xlRaw').addEventListener('change',count); count();
+  $('#xlGo').onclick=async()=>{
+    const chosen=tabs.filter(t=>boxes().find(b=>b.value===t.pg&&b.checked)); const raw=$('#xlRaw').checked;
+    const keep={}; chosen.forEach(t=>keep[t.pg]=1); try{ localStorage.setItem('xlPick',JSON.stringify(keep)); }catch(e){}
+    busy=true; $('#xlGo').disabled=true; $('#xlCancel').disabled=true; bg.classList.add('xl-busy');
+    try{
+      const data=await xlBuild(chosen,(i,t)=>{ $('#xlStatus').textContent='Reading '+t.name+' … ('+(i+1)+' of '+chosen.length+')'; });
+      $('#xlStatus').textContent='Writing the Excel file …';
+      const res=await xlWrite(data,raw);
+      $('#xlStatus').innerHTML='✓ Saved <b>'+esc(res.file)+'</b>'+(res.styled?'':' (plain format — the styling library could not load)');
+      busy=false; setTimeout(close,1600);
+    }catch(e){ busy=false; $('#xlStatus').textContent='Export failed: '+((e&&e.message)||e); $('#xlGo').disabled=false; $('#xlCancel').disabled=false; bg.classList.remove('xl-busy'); }
+  };
+}
+(function(){ const b=document.getElementById('exportBtn'); if(b){ b.onclick=null; b.addEventListener('click',e=>{ e.preventDefault(); e.stopImmediatePropagation(); xlDialog(); },true); b.title='Export tabs to Excel'; } })();
+
+/* ===================== H.K audit: dates come from the workbook's "Start time" ===================== */
+/* The H.K Feedback sheet's own date column is empty (it reads 30 Dec 1899), so each row takes its date from
+   the Start time column of the same workbook row (published by the sync), and the chart then spreads over real dates. */
+function hkFixDates(){
+  try{ const ds=DS.hk; if(!ds||!Array.isArray(ds.rowsrc)||typeof WBD==='undefined'||!WBD) return false;
+    const sh=wbSheet(ds.sheet); if(!sh) return false; const c=wbColIdx(sh,'Start time',1); if(c<0) return false; let n=0;
+    ds.rows.forEach((r,i)=>{ const d=toDate(r[11]); if(d&&d.getUTCFullYear()>=2000) return; const v=(sh.r[ds.rowsrc[i]]||[])[c]; if(v!=null&&v!==''){ const dd=toDate(v); if(dd&&dd.getUTCFullYear()>=2000){ r[11]=v; n++; } } });
+    return n>0; }catch(e){ return false; } }
+(function(){ if(typeof PG==='undefined'||!PG.hk) return; const orig=PG.hk;
+  PG.hk=function(w){ hkFixDates(); const r=orig.apply(this,arguments);
+    if(typeof WBD!=='undefined'&&!WBD&&typeof WB_CUR!=='undefined'&&WB_CUR.gz) wbLoad().then(()=>{ if(hkFixDates()&&currentPage==='hk') show('hk'); });
+    return r; }; })();
 </script>
 </body>
 </html>
