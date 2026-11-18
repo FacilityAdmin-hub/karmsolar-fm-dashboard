@@ -567,6 +567,35 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
  .main{margin-left:0}
  body{background:#fff;color:#000}
 }
+
+/* ===================== Search (every tab) ===================== */
+.qsearch{position:relative;order:3;flex:1 1 100%;max-width:620px;min-width:0;margin:2px 0 0}
+.qsearch .qs-ic{position:absolute;left:11px;top:50%;width:16px;height:16px;margin-top:-8px;color:var(--muted);pointer-events:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.qsearch input{width:100%;height:36px;padding:0 128px 0 34px;border-radius:var(--radius-sm);border:1px solid var(--line-strong);background:#0B1B27;color:var(--ink);font:inherit;font-size:13px;outline:none;transition:border-color .15s,box-shadow .15s}
+.qsearch input::placeholder{color:#6F8597}
+.qsearch input:focus{border-color:var(--solar);box-shadow:0 0 0 3px rgba(245,166,35,.16)}
+.qsearch input::-webkit-search-cancel-button{display:none}
+.qs-meta{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:2px}
+.qs-count{font-size:11px;color:var(--muted);padding:0 6px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.qs-count.none{color:var(--red)}
+.qs-meta button{appearance:none;border:0;background:transparent;color:var(--muted);width:24px;height:24px;border-radius:6px;cursor:pointer;display:grid;place-items:center;font-size:13px;line-height:1}
+.qs-meta button:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+.qs-meta button[hidden],.qs-count[hidden]{display:none}
+.qs-key{font-size:10.5px;color:#6F8597;border:1px solid var(--line-strong);border-radius:5px;padding:1px 5px;margin-right:4px;font-family:var(--font)}
+.qs-pop{display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:70;background:var(--card2);border:1px solid var(--line-strong);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.45);padding:6px;max-height:360px;overflow:auto}
+.qs-pop.open{display:block}
+.qs-pop h4{margin:4px 8px 6px;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.qs-pop button{display:flex;width:100%;align-items:center;justify-content:space-between;gap:10px;appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;font-size:13px;text-align:left;padding:8px 10px;border-radius:7px;cursor:pointer}
+.qs-pop button:hover,.qs-pop button:focus-visible{background:rgba(255,255,255,.06);outline:none}
+.qs-pop button.cur{color:#FFC363}
+.qs-pop button span:last-child{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.qs-pop .qs-note{font-size:12px;color:var(--muted);padding:8px 10px;line-height:1.45}
+mark.qs-hit{background:rgba(245,166,35,.26);color:inherit;border-radius:3px;padding:0 1px;box-shadow:0 0 0 1px rgba(245,166,35,.32)}
+mark.qs-hit.qs-cur{background:var(--solar);color:#1A1204;box-shadow:0 0 0 2px rgba(245,166,35,.45)}
+.qs-hide{display:none!important}
+tr.qs-empty td{text-align:center;color:var(--muted);font-size:12px;padding:14px}
+@media(max-width:920px){.qsearch{max-width:none;margin:4px 0 0}}
+@media print{.qsearch{display:none}}
 </style>
 </head>
 <body id="artifacts-component-root-html">
@@ -604,6 +633,18 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
       <div style="display:flex;align-items:center;gap:14px">
         <button class="btn menu-btn" id="menuBtn">☰</button>
         <div><h1 id="pgTitle">Overview</h1><div class="sub" id="pgSub">A single view across every admin &amp; facilities workstream</div></div>
+      </div>
+      <div class="qsearch" id="qsearch" role="search">
+        <svg class="qs-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input type="search" id="qsInput" placeholder="Search this tab…" autocomplete="off" spellcheck="false" aria-label="Search the dashboard" aria-controls="qsPop">
+        <div class="qs-meta">
+          <span class="qs-key" id="qsKey">Ctrl K</span>
+          <span class="qs-count" id="qsCount" hidden aria-live="polite"></span>
+          <button type="button" id="qsPrev" title="Previous match (Shift+Enter)" aria-label="Previous match" hidden>&#8593;</button>
+          <button type="button" id="qsNext" title="Next match (Enter)" aria-label="Next match" hidden>&#8595;</button>
+          <button type="button" id="qsClear" title="Clear search (Esc)" aria-label="Clear search" hidden>&#10005;</button>
+        </div>
+        <div class="qs-pop" id="qsPop"></div>
       </div>
       <div class="right">
         <div class="stamp">Data source<br><b id="srcName">Live workbook (auto-synced) · 11/15/2026, 3:48:21 PM UTC</b></div>
@@ -3144,6 +3185,225 @@ const BUILD_ID='2026-11-12-v6';   /* change this whenever the dashboard CODE cha
         if(med>50){ document.body.classList.add('lite'); try{ console.info('[night] slow device detected ('+Math.round(med)+'ms/frame) -> lite effects'); }catch(e){} } };
       requestAnimationFrame(probe); }catch(e){} },900);
   }catch(e){}
+})();
+
+/* ===================== Search: every tab, any word ===================== */
+(function(){
+  const input=document.getElementById('qsInput'), box=document.getElementById('qsearch');
+  const wrap=document.getElementById('wrap');
+  if(!input||!box||!wrap) return;
+  const countEl=document.getElementById('qsCount'), keyEl=document.getElementById('qsKey');
+  const prevEl=document.getElementById('qsPrev'), nextEl=document.getElementById('qsNext'), clearEl=document.getElementById('qsClear');
+  const pop=document.getElementById('qsPop');
+  if(keyEl && /Mac|iPhone|iPad/.test(navigator.platform||'')) keyEl.textContent='\u2318 K';
+
+  /* which data sets feed which tab (for "found in other tabs") */
+  const DATA_PAGE={payments:'payments',hk:'hk',attendance:'hk',hkchecklist:'hk',hkext:'hkext',kstd:'kstd',
+    water:'utilities',adminconsumption:'consumption',stock:'stock',sandstock:'sandstock',contracts:'contracts',
+    couriers:'couriers',fna:'budget',sand:'budget',capex:'budget',actual:'budget',pr:'pr',assetsdata:'assetsdata',
+    ppmlog:'ppmlog',pest:'pest',catering:'catering',cateringsites:'catering',utensils:'utensils'};
+  const PDF_PAGES={procurement:1,assetguide:1,sop:1};
+  const ITEM_SEL='tbody tr, .chk li';
+  const SKIP_TAGS={SCRIPT:1,STYLE:1,TEXTAREA:1,SELECT:1,OPTION:1,INPUT:1,CANVAS:1,svg:1,SVG:1,BUTTON:1,MARK:1};
+
+  /* Build one forgiving regex per word: case-insensitive, ignores Arabic diacritics,
+     treats أ/إ/آ/ا, ى/ي, ة/ه, ؤ/و, ئ/ي as the same letter, and ignores thousands separators. */
+  const AR={'\u0627':'[\u0627\u0623\u0625\u0622\u0671]','\u0623':'[\u0627\u0623\u0625\u0622\u0671]','\u0625':'[\u0627\u0623\u0625\u0622\u0671]','\u0622':'[\u0627\u0623\u0625\u0622\u0671]',
+    '\u064A':'[\u064A\u0649\u0626]','\u0649':'[\u064A\u0649\u0626]','\u0626':'[\u064A\u0649\u0626]','\u0629':'[\u0629\u0647]','\u0647':'[\u0629\u0647]','\u0624':'[\u0624\u0648]','\u0648':'[\u0624\u0648]'};
+  const DIA='[\u064B-\u065F\u0670\u0640]*';
+  function wordRe(w){
+    w=w.replace(/[\u064B-\u065F\u0670\u0640]/g,'').replace(/,/g,'');
+    let out='';
+    for(const ch of w){
+      if(AR[ch]) out+=AR[ch]+DIA;
+      else if(/[0-9]/.test(ch)) out+=ch+',?';
+      else out+=ch.replace(/[.*+?^${}()|[\]\\\/-]/g,'\\$&')+(/[\u0600-\u06FF]/.test(ch)?DIA:'');
+    }
+    return out.replace(/,\?$/,'');
+  }
+  function compile(q){
+    const words=q.trim().split(/\s+/).filter(Boolean).slice(0,12);
+    if(!words.length) return null;
+    const parts=words.map(wordRe).filter(Boolean);
+    if(!parts.length) return null;
+    return { tests:parts.map(p=>new RegExp(p,'i')), all:new RegExp('('+parts.join('|')+')','gi') };
+  }
+  const matchesAll=(text,Q)=>Q.tests.every(r=>r.test(text));
+
+  let Q=null, hits=[], cur=-1, busy=false, timer=null;
+  function itemText(el){
+    let t=el.textContent||'';
+    el.querySelectorAll('input,textarea').forEach(i=>{ if(i.type!=='checkbox'&&i.type!=='radio') t+=' '+i.value; });
+    el.querySelectorAll('select').forEach(sl=>{ const o=sl.options[sl.selectedIndex]; if(o) t+=' '+o.text; });
+    return t;
+  }
+
+  function clearDom(){
+    wrap.querySelectorAll('mark.qs-hit').forEach(m=>{ const p=m.parentNode; if(!p) return; p.replaceChild(document.createTextNode(m.textContent),m); p.normalize(); });
+    wrap.querySelectorAll('.qs-hide').forEach(e=>e.classList.remove('qs-hide'));
+    wrap.querySelectorAll('tr.qs-empty').forEach(e=>e.remove());
+  }
+  function highlight(root){
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode(n){
+      if(!n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      for(let p=n.parentNode;p&&p!==root;p=p.parentNode){
+        if(SKIP_TAGS[p.nodeName]||p.isContentEditable||(p.classList&&(p.classList.contains('qs-hide')||p.classList.contains('qs-empty')))) return NodeFilter.FILTER_REJECT;
+      }
+      Q.all.lastIndex=0; return Q.all.test(n.nodeValue)?NodeFilter.FILTER_ACCEPT:NodeFilter.FILTER_REJECT; }});
+    const nodes=[]; while(walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(n=>{
+      const txt=n.nodeValue, frag=document.createDocumentFragment(); let last=0, m;
+      Q.all.lastIndex=0;
+      while((m=Q.all.exec(txt))){
+        if(!m[0]){ Q.all.lastIndex++; continue; }
+        if(m.index>last) frag.appendChild(document.createTextNode(txt.slice(last,m.index)));
+        const mk=document.createElement('mark'); mk.className='qs-hit'; mk.textContent=m[0]; frag.appendChild(mk);
+        last=m.index+m[0].length;
+      }
+      if(last<txt.length) frag.appendChild(document.createTextNode(txt.slice(last)));
+      n.parentNode.replaceChild(frag,n);
+    });
+  }
+
+  function applyDom(){
+    busy=true; obs.disconnect();
+    try{
+      clearDom(); hits=[]; cur=-1;
+      if(Q){
+        let rowsShown=0, rowsTotal=0;
+        wrap.querySelectorAll(ITEM_SEL).forEach(el=>{
+          if(el.closest('thead')) return;
+          rowsTotal++;
+          if(matchesAll(itemText(el),Q)) rowsShown++; else el.classList.add('qs-hide');
+        });
+        wrap.querySelectorAll('tbody').forEach(tb=>{
+          const rows=[...tb.children].filter(r=>r.tagName==='TR');
+          if(rows.length && rows.every(r=>r.classList.contains('qs-hide'))){
+            const cols=Math.max(1,...rows.map(r=>[...r.children].reduce((a,c)=>a+(c.colSpan||1),0)));
+            const tr=document.createElement('tr'); tr.className='qs-empty';
+            const td=document.createElement('td'); td.colSpan=cols; td.textContent='No rows match \u201c'+input.value.trim()+'\u201d';
+            tr.appendChild(td); tb.appendChild(tr);
+          }
+        });
+        if(!document.body.classList.contains('edit')) highlight(wrap);
+        hits=[...wrap.querySelectorAll('mark.qs-hit')];
+        applyDom.rows={shown:rowsShown,total:rowsTotal};
+      }
+    }finally{ obs.observe(wrap,{childList:true,subtree:true}); busy=false; }
+    updateMeta();
+  }
+
+  function updateMeta(){
+    const on=!!Q;
+    keyEl.hidden=on; clearEl.hidden=!on; countEl.hidden=!on;
+    prevEl.hidden=nextEl.hidden=!(on&&hits.length>1);
+    if(!on){ countEl.textContent=''; return; }
+    const pdf=PDF_PAGES[currentPage];
+    if(hits.length){ countEl.className='qs-count'; countEl.textContent=(cur>=0?(cur+1)+' / ':'')+hits.length+(hits.length===1?' match':' matches'); }
+    else if(document.body.classList.contains('edit') && applyDom.rows && applyDom.rows.shown){ countEl.className='qs-count'; countEl.textContent=applyDom.rows.shown+' rows'; }
+    else { countEl.className='qs-count none'; countEl.textContent=pdf?'PDF tab':'No matches'; }
+  }
+
+  function go(step){
+    if(!hits.length) return;
+    if(cur>=0&&hits[cur]) hits[cur].classList.remove('qs-cur');
+    cur=(cur+step+hits.length)%hits.length;
+    const h=hits[cur]; h.classList.add('qs-cur');
+    h.scrollIntoView({block:'center',behavior:'smooth'});
+    updateMeta();
+  }
+
+  /* counts of matching rows in every tab's underlying data */
+  function otherTabs(){
+    const counts={};
+    try{
+      for(const k in DS){
+        const pg=DATA_PAGE[k]; const d=DS[k]; if(!pg||!d||!Array.isArray(d.rows)) continue;
+        let n=0; d.rows.forEach(r=>{ if(matchesAll((Array.isArray(r)?r:Object.values(r||{})).join(' \u2502 '),Q)) n++; });
+        if(n) counts[pg]=(counts[pg]||0)+n;
+      }
+    }catch(e){}
+    try{
+      if(Array.isArray(ISSUES)){
+        const skip={id:1,key:1,src:1,ts:1};
+        const flat=o=>{ const out=[]; (function walk(v,k){ if(v==null||skip[k]) return; if(typeof v==='object'){ for(const kk in v) walk(v[kk],kk); } else out.push(String(v)); })(o,''); return out.join(' \u2502 '); };
+        const n=ISSUES.filter(it=>matchesAll(flat(it),Q)).length;
+        if(n) counts.issues=(counts.issues||0)+n;
+      }
+    }catch(e){}
+    return counts;
+  }
+  function renderPop(){
+    if(!Q){ pop.classList.remove('open'); pop.innerHTML=''; return; }
+    const counts=otherTabs();
+    const order=[...document.querySelectorAll('#nav a[data-pg]')].map(a=>a.dataset.pg);
+    const pgs=order.filter(pg=>counts[pg]);
+    pop.innerHTML='';
+    const h=document.createElement('h4'); h.textContent=pgs.length?'Found in':'Other tabs'; pop.appendChild(h);
+    if(!pgs.length){
+      const n=document.createElement('div'); n.className='qs-note'; n.textContent='No tab has data matching every word.'; pop.appendChild(n);
+    }
+    pgs.forEach(pg=>{
+      const b=document.createElement('button'); b.type='button'; if(pg===currentPage) b.className='cur';
+      const a=document.createElement('span'); a.textContent=(PAGE_META[pg]||[pg])[0]+(pg===currentPage?' (this tab)':'');
+      const c=document.createElement('span'); c.textContent=counts[pg]+(counts[pg]===1?' row':' rows');
+      b.append(a,c); b.addEventListener('mousedown',e=>e.preventDefault());
+      b.addEventListener('click',()=>{ pop.classList.remove('open'); if(pg!==currentPage) show(pg); input.focus(); });
+      pop.appendChild(b);
+    });
+    const note=document.createElement('div'); note.className='qs-note';
+    note.textContent='PDF tabs (Procurement Benchmark, Asset Reference Guide, Facility SOP): open the tab and use the PDF viewer\u2019s own search (Ctrl+F).';
+    pop.appendChild(note);
+    pop.classList.toggle('open',document.activeElement===input);
+  }
+
+  function run(){
+    clearTimeout(timer); timer=null;
+    Q=compile(input.value);
+    applyDom(); renderPop();
+  }
+
+  /* re-apply after a tab re-renders itself (filters, date pickers, edits) */
+  /* Only react when real content rows appear (a card re-rendered its table/list). Other scripts
+     touch the tab too (custom columns, KPI decorations); reacting to those would loop forever. */
+  const brings=n=>n.nodeType===1 && n.nodeName!=='MARK' && !(n.dataset&&n.dataset.cc) && !n.classList.contains('qs-empty') &&
+    (n.matches('tr,li,tbody,table')||!!n.querySelector('tbody tr, .chk li'));
+  const obs=new MutationObserver(muts=>{
+    if(busy||!Q) return;
+    if(!muts.some(m=>[...m.addedNodes].some(brings))) return;
+    clearTimeout(run.t); run.t=setTimeout(()=>{ if(Q) applyDom(); },120);
+  });
+  obs.observe(wrap,{childList:true,subtree:true});
+
+  input.addEventListener('input',()=>{ clearTimeout(timer); timer=setTimeout(run,140); });
+  input.addEventListener('focus',()=>{ if(Q) renderPop(); });
+  input.addEventListener('blur',()=>setTimeout(()=>pop.classList.remove('open'),120));
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){ e.preventDefault(); if(timer||(compile(input.value)||{}).all+''!==(Q||{}).all+''){ run(); } go(e.shiftKey?-1:1); }
+    else if(e.key==='Escape'){ if(input.value){ input.value=''; run(); } else input.blur(); }
+    else if(e.key==='ArrowDown' && pop.classList.contains('open')){ const b=pop.querySelector('button'); if(b){ e.preventDefault(); b.focus(); } }
+  });
+  pop.addEventListener('keydown',e=>{
+    const bs=[...pop.querySelectorAll('button')], i=bs.indexOf(document.activeElement);
+    if(e.key==='ArrowDown'&&i<bs.length-1){ e.preventDefault(); bs[i+1].focus(); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); (i>0?bs[i-1]:input).focus(); }
+    else if(e.key==='Escape'){ input.focus(); pop.classList.remove('open'); }
+  });
+  pop.addEventListener('focusout',e=>{ if(!box.contains(e.relatedTarget)) pop.classList.remove('open'); });
+  prevEl.addEventListener('click',()=>go(-1));
+  nextEl.addEventListener('click',()=>go(1));
+  clearEl.addEventListener('click',()=>{ input.value=''; run(); input.focus(); });
+  document.addEventListener('keydown',e=>{
+    const k=(e.key||'').toLowerCase();
+    const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName||'')||(document.activeElement&&document.activeElement.isContentEditable);
+    if((e.ctrlKey||e.metaKey)&&k==='k'){ e.preventDefault(); input.focus(); input.select(); }
+    else if(k==='/'&&!typing&&!e.ctrlKey&&!e.metaKey){ e.preventDefault(); input.focus(); input.select(); }
+  });
+
+  /* keep the search applied when switching tabs */
+  const _show=show;
+  show=function(pg){ const r=_show.apply(this,arguments); try{ input.placeholder='Search '+((PAGE_META[currentPage]||['this tab'])[0])+'\u2026'; if(Q){ applyDom(); renderPop(); } }catch(e){} return r; };
+  try{ input.placeholder='Search '+((PAGE_META[currentPage]||['this tab'])[0])+'\u2026'; }catch(e){}
 })();
 </script>
 </body>
