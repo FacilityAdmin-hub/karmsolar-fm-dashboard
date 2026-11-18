@@ -140,7 +140,7 @@
 </header>
 
 <div class="toolbar">
-  <input type="text" id="searchBox" class="grow" placeholder="Search title, requester, site…">
+  <input type="text" id="searchBox" class="grow" placeholder="Search anything in tickets &amp; comments…">
   <div class="ms" id="filterStatus"></div>
   <div class="ms" id="filterCategory"></div>
   <div class="ms" id="filterPriority"></div>
@@ -331,8 +331,21 @@ function populateFilters(){
   msBuild('sortBy', { sort:true, options: SORT_OPTIONS.map(([value, label]) => ({ value, label })) });
 }
 
+// Everything about a ticket that the search box looks through: every column of the ticket
+// (title, description, resolution notes, requester, site, assignee, ...) plus every comment,
+// activity line and attachment name in its thread.
+function searchText(t){
+  const parts = [];
+  for (const k in t){ const v = t[k]; if (v != null && v !== '') parts.push(String(v)); }
+  for (const c of (commentsByTicket[t['Ticket ID']] || [])){
+    parts.push(c.Content || '', c.Author || '');
+  }
+  return parts.join(' \n ').toLowerCase();
+}
+
 function getFiltered(){
-  const q = document.getElementById('searchBox').value.toLowerCase();
+  const q = document.getElementById('searchBox').value.toLowerCase().trim();
+  const terms = q ? q.split(/\s+/) : [];   // every word typed must appear somewhere in the ticket
   const picked = (id) => (MS[id] ? MS[id].selected : []);
   const st = picked('filterStatus');
   const cat = picked('filterCategory');
@@ -341,9 +354,9 @@ function getFiltered(){
     if (st.length && !st.includes(t['Status'])) return false;
     if (cat.length && !cat.includes(t['Category'])) return false;
     if (pri.length && !pri.includes(t['Priority'])) return false;
-    if (q){
-      const hay = (t['Title']+' '+t['Requester Name']+' '+t['Site / Location']+' '+t['Ticket ID']).toLowerCase();
-      if (!hay.includes(q)) return false;
+    if (terms.length){
+      const hay = searchText(t);
+      if (!terms.every(w => hay.includes(w))) return false;
     }
     return true;
   });
