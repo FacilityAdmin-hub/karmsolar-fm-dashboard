@@ -166,11 +166,13 @@ const HQ_STATUS_MAP = {
 // or marker isn't there yet, so a ticket-board hiccup never fails the dashboard sync.
 function readTicketIssuesFromBoard(boardHtmlPath) {
   let tickets = null;
+  let comments = {};
   // Preferred: the live snapshot from the data branch.
   try {
     if (fs.existsSync(TICKET_DATA_JSON_PATH)) {
       const d = JSON.parse(fs.readFileSync(TICKET_DATA_JSON_PATH, 'utf-8'));
       if (d && Array.isArray(d.tickets)) tickets = d.tickets;
+      if (d && d.comments && typeof d.comments === 'object') comments = d.comments;
     }
   } catch (e) { tickets = null; }
   // Fallback: the copy baked into ticket-board.html (older, but better than nothing).
@@ -201,6 +203,14 @@ function readTicketIssuesFromBoard(boardHtmlPath) {
     requesterName: t['Requester Name'] || '',
     requesterEmail: t['Requester Email'] || '',
     date: t['Date Submitted'] || '',
+    // The ticket's own content, so the dashboard can show it and its search bar can look inside it.
+    description: t['Description'] || '',
+    assignee: t['Assigned To'] || '',
+    resolution: t['Resolution Notes'] || '',
+    updated: t['Date Updated'] || '',
+    comments: (Array.isArray(comments[t['Ticket ID']]) ? comments[t['Ticket ID']] : [])
+      .map(c => ({ ts: c['Timestamp'] || '', by: c['Author'] || '', type: c['Type'] || '', text: c['Content'] || '' }))
+      .filter(c => c.text),
   }));
 }
 
