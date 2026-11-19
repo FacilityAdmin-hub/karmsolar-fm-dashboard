@@ -216,8 +216,9 @@ async function main() {
     const title = row.values[2];
     await sendNotificationEmail(
       token, requesterEmail, requesterName,
-      `Status updated: ${title}`,
-      `<p>Hi ${esc(requesterName)},</p><p>Your ticket <b>${esc(ticketId)} — ${esc(title)}</b> status changed to <b>${esc(status)}</b>.</p>`
+      `Status updated on ${ticketId}: ${title}`,
+      `<p>Hi ${esc(requesterName)},</p><p>Your ticket <b>${esc(ticketId)} — ${esc(title)}</b> status changed to <b>${esc(status)}</b>.</p>
+<p><a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-request.html?ticket=${encodeURIComponent(ticketId)}">Open your ticket</a> to see the conversation and add a comment, or simply reply to this email.</p>`
     );
     await sendTeamEmail(
       token,
