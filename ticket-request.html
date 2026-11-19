@@ -36,6 +36,14 @@
   .msg{margin-top:16px;padding:12px 14px;border-radius:8px;font-size:.9rem;display:none;}
   .msg.success{background:#e7f6ee;color:var(--green-dark);border:1px solid #bfe6cf;}
   footer{text-align:center;color:var(--muted);font-size:.78rem;padding:0 16px 30px;}
+  .tv h2{margin:0 0 4px;font-size:1.15rem;color:var(--navy);}
+  .tv .meta{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0 14px;font-size:.82rem;color:var(--muted);}
+  .tv .badge{display:inline-block;padding:2px 10px;border-radius:999px;background:#e7f6ee;color:var(--green-dark);font-weight:bold;font-size:.78rem;}
+  .tv .desc{white-space:pre-wrap;background:#f7faf9;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:.92rem;}
+  .tv h3{margin:22px 0 8px;font-size:.95rem;color:var(--navy);}
+  .tv .item{border-left:3px solid var(--green);background:#f7faf9;border-radius:0 8px 8px 0;padding:8px 12px;margin:8px 0;font-size:.9rem;white-space:pre-wrap;}
+  .tv .item.status{border-left-color:#b9c4c0;color:var(--muted);font-size:.8rem;}
+  .tv .item .by{font-size:.74rem;color:var(--muted);margin-bottom:3px;white-space:normal;}
 </style>
 </head>
 <body>
@@ -126,6 +134,7 @@
       <button type="submit" class="submit" id="submitBtn" disabled>Submit Request</button>
       <div class="msg success" id="successMsg">✅ Request submitted. It will appear on the FM team's board within a few minutes.</div>
     </form>
+    <div class="tv" id="ticketView" style="display:none"></div>
   </div>
   <footer>KarmSolar Facility Management &amp; Admin · Internal use only</footer>
 </div>
@@ -167,6 +176,18 @@ const reqEmailEl = document.getElementById('reqEmail');
 const reqNameEl = document.getElementById('reqName');
 const submitBtnEl = document.getElementById('submitBtn');
 
+// ---- "Your ticket" mode: ticket-request.html?ticket=TCK-... (the link in the ticket emails) ----
+// Same Microsoft sign-in as the form. The page only shows the ticket if the signed-in email is
+// the ticket's requester, and lets them read the conversation and add a comment.
+const TICKET_PARAM = (new URLSearchParams(location.search).get('ticket') || '').trim().toUpperCase();
+const DATA_URL = 'https://raw.githubusercontent.com/FacilityAdmin-hub/karmsolar-fm-dashboard/data/tickets.json';
+if (TICKET_PARAM) {
+  form.style.display = 'none';
+  document.querySelector('header h1').textContent = 'Your ticket';
+  document.querySelector('header p').textContent = 'Follow your request and leave a comment any time';
+  document.title = 'KarmSolar FM & Admin — Your ticket';
+}
+
 function applyIdentity() {
   reqEmailEl.value = signedInEmail;
   if (!reqNameEl.value) reqNameEl.value = signedInName;
@@ -181,6 +202,7 @@ function showSignedIn(account) {
   authBox.className = 'authBox';
   authBox.textContent = 'Signed in as ' + (signedInName ? signedInName + ' · ' : '') + signedInEmail;
   submitBtnEl.disabled = false;
+  if (TICKET_PARAM) loadMyTicket();
 }
 
 function showSignInProblem(message) {
@@ -212,6 +234,85 @@ async function startSignIn() {
   }
 }
 startSignIn();
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function safeHref(u){ try{ const x = new URL(String(u || ''), location.href); return /^https?:$/.test(x.protocol) ? x.href : '#'; }catch(e){ return '#'; } }
+const EDITED_RE = /\s*\u27e6edited ([^\u27e7]*)\u27e7\s*$/;
+let myTicket = null, myComments = [];
+
+function renderMyTicket(){
+  const t = myTicket, box = document.getElementById('ticketView');
+  const items = myComments.map(c => {
+    const type = c['Type'];
+    if (type === 'Status') {
+      return /^Status changed/.test(c['Content'] || '') ? `<div class="item status">${esc(c['Timestamp'])} \u00b7 ${esc(c['Content'])}</div>` : '';
+    }
+    if (type === 'Attachment') {
+      return `<div class="item"><div class="by">${esc(c['Author'])} \u00b7 ${esc(c['Timestamp'])}</div>\ud83d\udcce <a href="${esc(safeHref(c['AttachmentURL']))}" target="_blank" rel="noopener noreferrer">${esc(c['Content'])}</a></div>`;
+    }
+    const text = String(c['Content'] || '').replace(EDITED_RE, '');
+    return `<div class="item"><div class="by">${esc(c['Author'])} \u00b7 ${esc(c['Timestamp'])}</div>${esc(text)}</div>`;
+  }).join('') || '<div class="hint">No comments yet.</div>';
+  box.innerHTML = `
+    <h2>${esc(t['Title'])}</h2>
+    <div class="meta"><span class="badge">${esc(t['Status'] || 'Open')}</span><span>${esc(t['Ticket ID'])}</span><span>${esc(t['Category'])}</span><span>Priority: ${esc(t['Priority'])}</span><span>${esc(t['Site / Location'])}</span><span>Submitted ${esc(t['Date Submitted'])}</span></div>
+    <div class="desc">${esc(t['Description'])}</div>
+    ${t['Resolution Notes'] ? `<h3>Resolution notes</h3><div class="desc">${esc(t['Resolution Notes'])}</div>` : ''}
+    <h3>Conversation</h3>
+    <div id="tvItems">${items}</div>
+    <label for="tvText">Add a comment</label>
+    <textarea id="tvText" placeholder="Write your comment for the FM team\u2026"></textarea>
+    <button type="button" class="submit" id="tvSend">Send comment</button>
+    <div class="hint" id="tvNote">The FM team is notified of every comment. New updates can take about a minute to appear here.</div>`;
+  document.getElementById('tvSend').onclick = sendMyComment;
+}
+
+async function loadMyTicket(){
+  const box = document.getElementById('ticketView');
+  box.style.display = 'block';
+  if (!/^TCK-\d{6}-\d{6}-[A-Z0-9]{3}$/.test(TICKET_PARAM)) { box.innerHTML = '<p>This ticket link is not valid.</p>'; return; }
+  box.innerHTML = '<p class="hint">Loading your ticket\u2026</p>';
+  try{
+    const res = await fetch(DATA_URL + '?t=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) throw new Error('feed ' + res.status);
+    const data = await res.json();
+    const t = (data.tickets || []).find(x => String(x['Ticket ID']).trim().toUpperCase() === TICKET_PARAM);
+    if (!t) { box.innerHTML = '<p>We could not find this ticket yet. If you just submitted it, give it a minute and refresh the page.</p>'; return; }
+    if (String(t['Requester Email'] || '').trim().toLowerCase() !== signedInEmail) {
+      box.innerHTML = '<p>This ticket was submitted by someone else, so it is not available to the account you are signed in with (' + esc(signedInEmail) + ').</p>';
+      return;
+    }
+    myTicket = t;
+    myComments = (data.comments && data.comments[t['Ticket ID']]) || [];
+    renderMyTicket();
+  }catch(err){
+    console.error(err);
+    box.innerHTML = '<p>Could not load your ticket right now. Please try again in a moment.</p>';
+  }
+}
+
+async function sendMyComment(){
+  const ta = document.getElementById('tvText'), btn = document.getElementById('tvSend');
+  const comment = ta.value.trim();
+  if (!comment || !myTicket) return;
+  const author = String(myTicket['Requester Name'] || signedInName || signedInEmail).trim();
+  btn.disabled = true; btn.textContent = 'Sending\u2026';
+  try{
+    const res = await fetch(PROXY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add-comment', ticketId: myTicket['Ticket ID'], author, authorEmail: signedInEmail, comment })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    myComments.push({ 'Ticket ID': myTicket['Ticket ID'], Timestamp: 'just now', Type: 'Comment', Author: author, Content: comment, AttachmentURL: '' });
+    renderMyTicket();
+    document.getElementById('tvNote').textContent = '\u2705 Comment sent. The FM team has been notified.';
+  }catch(err){
+    console.error(err);
+    btn.disabled = false; btn.textContent = 'Send comment';
+    document.getElementById('tvNote').textContent = 'Could not send your comment. Please try again.';
+  }
+}
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
