@@ -70,6 +70,15 @@ function ticketIdFrom(subject) {
   return m ? m[0].toUpperCase() : null;
 }
 
+// The ticket number is in the subject of the original notices, but not all of them
+// ("New comment on your ticket: <title>" has none), so fall back to the quoted thread in the body.
+function messageTicketId(m) {
+  return ticketIdFrom(m.subject)
+    || ticketIdFrom(m.uniqueBody && m.uniqueBody.content)
+    || ticketIdFrom(m.body && m.body.content)
+    || ticketIdFrom(m.bodyPreview);
+}
+
 function cellText(s) {
   s = String(s == null ? '' : s).replace(/\u0000/g, '').slice(0, MAX_LEN);
   return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
@@ -95,7 +104,7 @@ function pickReplies(messages, tickets, knownMarkers) {
     const marker = markerFor(m);
     if (knownMarkers.has(marker)) continue;                       // already handled
     if (!REPLY_SUBJECT_RE.test(m.subject || '')) continue;        // original notices, auto-replies, forwards
-    const id = ticketIdFrom(m.subject);
+    const id = messageTicketId(m);
     if (!id) continue;                                            // not about a ticket
     const t = byId.get(id);
     const from = String((m.from && m.from.emailAddress && m.from.emailAddress.address) || '').trim().toLowerCase();
@@ -172,7 +181,7 @@ async function main() {
   const token = await getAppToken();
   const messages = await readInbox(token);
   if (!messages) return;
-  const candidates = messages.filter(m => REPLY_SUBJECT_RE.test(m.subject || '') && ticketIdFrom(m.subject));
+  const candidates = messages.filter(m => REPLY_SUBJECT_RE.test(m.subject || '') && messageTicketId(m));
   if (!candidates.length) { console.log(`Inbound replies: ${messages.length} recent messages, none are ticket replies.`); return; }
 
   const { driveId, itemId } = await resolveFile(token);
@@ -201,4 +210,4 @@ if (require.main === module) {
   main().catch(err => console.log('Inbound replies failed (sync continues):', err.message));
 }
 
-module.exports = { htmlToText, stripQuoted, ticketIdFrom, pickReplies, markerFor, cellText };
+module.exports = { htmlToText, stripQuoted, ticketIdFrom, messageTicketId, pickReplies, markerFor, cellText };
