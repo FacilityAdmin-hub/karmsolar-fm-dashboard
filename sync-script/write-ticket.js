@@ -142,12 +142,13 @@ async function sendConfirmationEmail(token, toEmail, toName, ticketId, title) {
   if (!isAllowedEmail(toEmail)) { if (toEmail) console.log('Skipping confirmation email: address not on an allowed domain.'); return; }
   const url = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(USER_UPN)}/sendMail`;
   const subject = `Ticket submitted: ${ticketId}`;
+  const ticketLink = `https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-request.html?ticket=${encodeURIComponent(ticketId)}`;
   const htmlBody = `<p>Hi ${esc(toName)},</p>
 <p>Your request has been received and recorded.</p>
 <p><b>Ticket number:</b> ${esc(ticketId)}<br>
 <b>Subject:</b> ${esc(title)}</p>
-<p>We'll email you again as its status changes. You can also check its status any time on the
-<a href="https://facilityadmin-hub.github.io/karmsolar-fm-dashboard/ticket-board.html">ticket board</a>.</p>`;
+<p>We'll email you again as its status changes. You can follow your ticket and leave a comment whenever you like with
+<a href="${ticketLink}">your ticket link</a> (sign in with your KarmSolar account), or simply reply to this email.</p>`;
   try {
     const res = await fetch(url, {
       method: 'POST',
