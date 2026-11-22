@@ -644,6 +644,10 @@ tr.qs-empty td{text-align:center;color:var(--muted);font-size:12px;padding:14px}
 .pm-over{background:rgba(224,83,61,.14);color:#FF8A75;border-color:rgba(224,83,61,.35)}
 .pm-none{background:rgba(160,180,195,.12);color:var(--muted);border-color:rgba(160,180,195,.3)}
 .pm-sum{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}
+
+/* ---- consumption: items at zero ---- */
+tr.c-zero td{color:var(--muted)}
+tr.c-zero td.num{opacity:.7}
 </style>
 </head>
 <body id="artifacts-component-root-html">
@@ -1268,33 +1272,38 @@ PG.hkext=function(w){ const rows=DS.hkext.rows; const qCols=[4,5,6,7,8,9,10,11,1
       {label:'External (employees)',data:avgBy(ext),borderColor:C.violet,backgroundColor:'transparent',spanGaps:true,tension:.3,pointRadius:3,borderWidth:2.4}]},
       options:{plugins:{legend:{position:'top',align:'end'}},scales:{x:gridX,y:{...gridY,min:0,max:5,ticks:{stepSize:1,callback:v=>v}}},maintainAspectRatio:false}}); }); };
 
-PG.consumption=function(w){ const a=A.adminCons(); const rows=DS.adminconsumption.rows; const names=a.names;
+PG.consumption=function(w){ const rows=DS.adminconsumption.rows; const hdr=DS.adminconsumption.headers;
+  /* every item column of the form, including items nobody has taken yet (zero); the email, name and location columns are left out */
+  const IDX=[]; for(let c=2;c<hdr.length;c++){ const nm=String(hdr[c]||'').trim(); if(!nm) continue; if(/^(e-?mail|name|\u0627\u0644\u0645\u0648\u0642\u0639|location|site)$/i.test(nm)) continue;
+    let t=0,n=0; rows.forEach(x=>{ const v=x[c]; if(v==null||v==='') return; if(isNumish(v)) n++; else t++; }); if(t>n) continue; IDX.push(c); }
+  const names=IDX.map(c=>String(hdr[c]).trim());
   const LOCS=['HQ','Sand'];
   const R=(st)=>rows.filter(x=>_inRange(toDate(x[0]),st.f,st.t)&&inLoc(st.loc,x[4]));
-  const totOf=(st)=>{ const per=names.map(()=>0); R(st).forEach(x=>names.forEach((n,i)=>{ if(inSel(st.sel,n)) per[i]+=num(x[i+2]); }));
-    return names.map((n,i)=>({name:n,unit:unitFor(n),qty:per[i]})).filter(o=>o.qty>0).sort((x,y)=>y.qty-x.qty); };
+  const totOf=(st)=>{ const per=names.map(()=>0); R(st).forEach(x=>names.forEach((n,i)=>{ per[i]+=num(x[IDX[i]]); }));
+    return names.map((n,i)=>({name:n,unit:unitFor(n),qty:per[i]})).filter(o=>inSel(st.sel,o.name)).sort((x,y)=>y.qty-x.qty||x.name.localeCompare(y.name)); };
   w.innerHTML=`<div class="card" style="padding:12px 16px">${cardCtl('ck','Items',names,{locs:LOCS})}<div class="kpis" id="cKpis" style="margin-top:8px"></div></div>
   <div class="card" style="margin-top:16px"><h3>Consumption by period</h3><p class="cap">Total units recorded</p>${cardCtl('cm','Items',names,{locs:LOCS})}<div class="chart-h"><canvas id="cm"></canvas></div></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="card"><h3>Quantity by item</h3><p class="cap">Units consumed in this card\u2019s range</p>${cardCtl('citm','Items',names,{locs:LOCS})}<div class="chart-h lg"><canvas id="citm"></canvas></div></div>
+    <div class="card"><h3>Quantity by item</h3><p class="cap">Units consumed in this card\u2019s range \u2014 every item, including those at zero</p>${cardCtl('citm','Items',names,{locs:LOCS})}<div class="chart-h lg"><canvas id="citm"></canvas></div></div>
     <div class="card"><h3>Share by item</h3><p class="cap">Proportion of consumption</p>${cardCtl('cshr','Items',names,{locs:LOCS})}<div class="chart-h lg"><canvas id="cshr"></canvas></div></div></div>
   <div class="sec-title"><h2>Consumption detail</h2><span>this table has its own filters</span></div>
   <div class="card">${cardCtl('ctbl','Items',names,{locs:LOCS})}<div class="tbl-wrap"><table><thead><tr><th>Item</th><th>Unit</th><th class="num">Quantity</th><th>Share</th></tr></thead><tbody id="ctb"></tbody></table></div></div>`;
-  wireCardCtl(w,'ck',names,{locs:LOCS},st=>{ const list=totOf(st); const tot=list.reduce((s,i)=>s+i.qty,0);
+  wireCardCtl(w,'ck',names,{locs:LOCS},st=>{ const all=totOf(st); const list=all.filter(i=>i.qty>0); const tot=list.reduce((s,i)=>s+i.qty,0);
     w.querySelector('#cKpis').innerHTML=
       kpi('Total units',fmt(tot),'',R(st).length+' stock-takes'+(st.loc?' \u00b7 '+st.loc:''),'')+
-      kpi('Items',list.length,'',st.sel.length?'selected':'with consumption','p')+
+      kpi('Items',all.length,'',list.length+' with consumption \u00b7 '+(all.length-list.length)+' at zero','p')+
       kpi('Top item',list[0]?fmt(list[0].qty):'\u2014','',list[0]?list[0].name:'\u2014','g')+
       kpi('Avg / stock-take',R(st).length?fmt(Math.round(tot/R(st).length)):'\u2014','','units','v'); });
-  wireCardCtl(w,'cm',names,{locs:LOCS},st=>{ const items=R(st).map(x=>{ let v=0; names.forEach((n,i)=>{ if(inSel(st.sel,n)) v+=num(x[i+2]); }); return {d:toDate(x[0]),v}; }).filter(o=>o.d);
+  wireCardCtl(w,'cm',names,{locs:LOCS},st=>{ const items=R(st).map(x=>{ let v=0; names.forEach((n,i)=>{ if(inSel(st.sel,n)) v+=num(x[IDX[i]]); }); return {d:toDate(x[0]),v}; }).filter(o=>o.d);
     const b=bucketSum(items,st.g,st.f,st.t);
     mkChart('cm',{type:'bar',data:{labels:b.labels,datasets:[{data:b.data,backgroundColor:C.solar,borderRadius:5,maxBarThickness:48}]},options:{plugins:noLeg,scales:{x:gridX,y:{...gridY,ticks:{callback:v=>fmt(v)}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'citm',names,{locs:LOCS},st=>{ const list=totOf(st).slice(0,25);
+  wireCardCtl(w,'citm',names,{locs:LOCS},st=>{ const list=totOf(st);
+    { const cv=document.getElementById('citm'); const box=cv&&cv.closest('.chart-h'); if(box) box.style.height=Math.max(320,list.length*17+40)+'px'; }
     mkChart('citm',{type:'bar',data:{labels:list.map(i=>i.name),datasets:[{data:list.map(i=>i.qty),backgroundColor:C.petrol,borderRadius:4,maxBarThickness:16}]},options:{indexAxis:'y',plugins:noLeg,scales:{x:{...gridY,ticks:{callback:v=>fmt(v)}},y:{grid:{display:false},ticks:{font:{size:10}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'cshr',names,{locs:LOCS},st=>{ const list=totOf(st).slice(0,8);
+  wireCardCtl(w,'cshr',names,{locs:LOCS},st=>{ const list=totOf(st).filter(i=>i.qty>0).slice(0,8);
     mkChart('cshr',{type:'doughnut',data:{labels:list.map(i=>i.name),datasets:[{data:list.map(i=>i.qty),backgroundColor:[C.petrol,C.solar,C.green,C.violet,C.red,C.psoft,'#C9A227','#7E8B95'],borderWidth:2,borderColor:'#0F2230'}]},options:{cutout:'58%',plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:6,font:{size:10}}}},maintainAspectRatio:false}}); });
-  wireCardCtl(w,'ctbl',names,{locs:LOCS},st=>{ const tb=w.querySelector('#ctb'); tb.innerHTML=''; const list=totOf(st); const mx=list[0]?list[0].qty:1;
-    list.forEach(i=>tb.appendChild(el('tr',null,`<td>${esc(i.name)}</td><td><span class="pill mut">${i.unit}</span></td><td class="num">${fmt(i.qty)}</td><td style="width:150px"><div class="prog"><i style="width:${i.qty/mx*100}%"></i></div></td>`)));
+  wireCardCtl(w,'ctbl',names,{locs:LOCS},st=>{ const tb=w.querySelector('#ctb'); tb.innerHTML=''; const list=totOf(st); const mx=list[0]&&list[0].qty?list[0].qty:0;
+    list.forEach(i=>tb.appendChild(el('tr',i.qty?null:'c-zero',`<td>${esc(i.name)}</td><td><span class="pill mut">${i.unit}</span></td><td class="num">${fmt(i.qty)}</td><td style="width:150px"><div class="prog"><i style="width:${mx?i.qty/mx*100:0}%"></i></div></td>`)));
     if(!list.length) tb.innerHTML='<tr><td colspan="4" class="cap">Nothing matches this card\u2019s filters.</td></tr>'; }); };
 
 PG.utilities=function(w){ const u=A.water(); const MET=u.meters.map(m=>m.nm);
@@ -3181,7 +3190,7 @@ if(dlBtnEl) dlBtnEl.onclick=downloadHtml;
 })();
 
 /* ===================== Live refresh: pick up newly synced data without reloading ===================== */
-const BUILD_ID='2026-11-22-v11';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+const BUILD_ID='2026-11-22-v12';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
 (function(){
   if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
   const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],utensils:['utensils'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog','ppmresp'],pest:['pest']};
