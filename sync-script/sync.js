@@ -28,6 +28,9 @@ const TICKET_BOARD_HTML_PATH = process.env.TICKET_BOARD_HTML_PATH || path.join(_
 // workflow into ./data-branch). Preferred source for the ticket mirror; ticket-board.html's
 // baked-in copy is only a fallback now (it is no longer refreshed on every change).
 const TICKET_DATA_JSON_PATH = process.env.TICKET_DATA_JSON_PATH || path.join(__dirname, '..', 'data-branch', 'tickets.json');
+// Shared dashboard settings (added columns, renamed titles, card layout, saved charts, request updates) that
+// settings-write.yml keeps on the data branch. They are baked into index.html so everyone sees everyone's changes.
+const SETTINGS_JSON_PATH = process.env.SETTINGS_JSON_PATH || path.join(__dirname, '..', 'data-branch', 'dashboard-settings.json');
 
 async function getAppToken() {
   const url = `https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`;
@@ -94,6 +97,21 @@ function patchWorkbook(htmlContent, wb) {
   out = out.slice(0, hi2 + hm.length) + hash + out.slice(hEnd2);
   console.log('Workbook store updated:', wb.sheets.length, 'sheets,', (json.length / 1024).toFixed(0), 'KB raw,', (gz.length / 1024).toFixed(0), 'KB compressed.' + (wb.skipped && wb.skipped.length ? ' Not included: ' + wb.skipped.join('; ') : ''));
   return out;
+}
+
+// Bakes the shared settings into index.html's "const SHARED_SETTINGS = {...};" line. Missing file or marker: no change.
+function patchSharedSettings(htmlContent) {
+  const marker = 'const SHARED_SETTINGS = ';
+  const start = htmlContent.indexOf(marker);
+  if (start < 0) return htmlContent;
+  let doc = null;
+  try { if (fs.existsSync(SETTINGS_JSON_PATH)) doc = JSON.parse(fs.readFileSync(SETTINGS_JSON_PATH, 'utf-8')); } catch (e) { console.log('Shared settings unreadable (non-fatal):', e.message); return htmlContent; }
+  if (!doc || typeof doc !== 'object' || !doc.sections) return htmlContent;
+  const end = htmlContent.indexOf(';\n', start);
+  if (end < 0) return htmlContent;
+  // "</script" inside a value would end the page's script early, so it is written escaped.
+  const json = JSON.stringify(doc).replace(/<\/(script)/gi, '<\\/$1');
+  return htmlContent.slice(0, start + marker.length) + json + htmlContent.slice(end);
 }
 
 // The "Data source" label near the top of the page is a hardcoded <b id="srcName"> in the
@@ -247,6 +265,7 @@ async function main() {
   let patched = patchIndexHtml(html, DS);
   patched = patchIssues(patched, issues);
   try { patched = patchWorkbook(patched, WB); } catch (err) { console.log('Workbook store step failed (non-fatal):', err.message); }
+  try { patched = patchSharedSettings(patched); } catch (err) { console.log('Shared settings step failed (non-fatal):', err.message); }
 
   try {
     const ticketIssues = readTicketIssuesFromBoard(TICKET_BOARD_HTML_PATH);
@@ -283,7 +302,7 @@ async function main() {
   console.log('index.html updated with fresh data, issues, tickets, and current label.');
 }
 
-module.exports = { patchWorkbook, patchIndexHtml, patchSourceLabel, patchIssues, readTicketIssuesFromBoard, patchTicketIssues, getAppToken, downloadWorkbook };
+module.exports = { patchSharedSettings, patchWorkbook, patchIndexHtml, patchSourceLabel, patchIssues, readTicketIssuesFromBoard, patchTicketIssues, getAppToken, downloadWorkbook };
 
 if (require.main === module) {
   main().catch(err => {
