@@ -1,0 +1,89 @@
+name: Save shared dashboard settings
+
+# The dashboard sends people's changes (added columns and their values, renamed titles, card layout, saved charts,
+# request updates) through the ticket proxy, which opens a "Settings:" issue. This saves them to
+# dashboard-settings.json on the data branch, then runs the dashboard sync so the change reaches everyone.
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+# One at a time. A waiting run that GitHub replaces loses nothing: every run applies all open "Settings:" issues.
+concurrency:
+  group: settings-writer
+  cancel-in-progress: false
+
+jobs:
+  save:
+    # Only issues opened by the proxy's own account (the repository owner) may change shared settings.
+    if: github.event_name == 'workflow_dispatch' || (startsWith(github.event.issue.title, 'Settings:') && github.event.issue.user.login == github.repository_owner)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Prepare data branch
+        run: |
+          git config user.name "dashboard-sync-bot"
+          git config user.email "actions@github.com"
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth 1 origin data
+            git worktree add --detach data-branch FETCH_HEAD
+          else
+            git worktree add --detach data-branch
+            git -C data-branch checkout --orphan data
+            git -C data-branch rm -rf --quiet . || true
+          fi
+
+      - name: Apply the changes and publish them
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
+          DATA_DIR: ${{ github.workspace }}/data-branch
+        run: |
+          node sync-script/write-settings.js apply
+          cd data-branch
+          if [ -z "$(git status --porcelain -- dashboard-settings.json)" ]; then echo "Nothing to save."; exit 0; fi
+          git add dashboard-settings.json
+          git commit -q -m "Dashboard settings $(date -u +'%Y-%m-%d %H:%M UTC')"
+          for i in 1 2 3 4 5 6; do
+            if git push origin HEAD:data; then echo "Saved."; exit 0; fi
+            echo "Push rejected, re-applying on top of the newest data branch (attempt $i)..."
+            git fetch --depth 1 origin data
+            git reset -q --hard FETCH_HEAD
+            (cd .. && node sync-script/write-settings.js apply)
+            git add dashboard-settings.json
+            git commit -q -m "Dashboard settings $(date -u +'%Y-%m-%d %H:%M UTC')" || true
+            sleep $((RANDOM % 5 + 2))
+          done
+          echo "Could not publish the settings."; exit 1
+
+      - name: Close the settings issues
+        if: success()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REPO_OWNER: ${{ github.repository_owner }}
+        run: node sync-script/write-settings.js close
+
+      - name: Run the dashboard sync now, so everyone gets the change
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/sync.yml/dispatches" \
+            -d '{"ref":"main"}'
