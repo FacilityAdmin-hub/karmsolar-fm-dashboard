@@ -40,7 +40,7 @@ const SPEC = {
   adminconsumption: { name: 'ADMIN consumption STOCK', cols: Array.from({length:51},(_,i)=>i+1), valid: c => num(c[0]) > 0 && toDate(c[1]) != null },
   stock: { name: 'Admin current stock', cols: [0,2,3,4,6,8], valid: c => String(c[0] || '').trim() !== '' },
   sandstock: { name: 'Admin current stock Sand', cols: [0,2,3,4,6,8], valid: c => String(c[0] || '').trim() !== '' },
-  contracts: { name: 'contracts', cols: [0,2,3,4,5,6,7,8,10,11,16,17], valid: c => String(c[0] || '').trim() !== '' },
+  contracts: { name: 'contracts', cols: [0,2,3,4,5,6,7,8,10,11,16,17], pick: [/^contract$/i,/^description/i,/^start/i,/^end/i,/excl/i,/including|incl\./i,/poc/i,/payment method/i,/period/i,/renew/i,/subsidiar/i,/^location/i,/mainten/i,/insurance/i], valid: c => String(c[0] || '').trim() !== '' },
   couriers: { name: 'courriers', cols: [0,1,2,5], valid: c => toDate(c[0]) != null },
   fna: { name: 'FNA Budget', cols: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,29], valid: c => String(c[0] || '').trim() !== '' },
   sand: { name: 'Sand Admin Budget', cols: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,28], valid: c => String(c[0] || '').trim() !== '' },
@@ -60,11 +60,13 @@ function extractSheet(wb, spec) {
   const aoa = XLSX.utils.sheet_to_json(wb.Sheets[sname], { header: 1, raw: true, blankrows: false, defval: '' });
   const hr = spec.headerRow || 0;
   if (!aoa.length || aoa.length <= hr) return { headers: spec.cols.map(() => ''), rows: [] };
-  const headers = spec.cols.map(c => String((aoa[hr] || [])[c] == null ? '' : (aoa[hr] || [])[c]).trim());
+  // columns found by their header name (so added/removed workbook columns don't shift the data)
+  if (spec.pick) { const hrow = (aoa[hr] || []).map(h => String(h == null ? '' : h).trim()); spec = Object.assign({}, spec, { cols: spec.pick.map(re => hrow.findIndex(h => re.test(h))) }); }
+  const headers = spec.cols.map(c => c < 0 ? '' : String((aoa[hr] || [])[c] == null ? '' : (aoa[hr] || [])[c]).trim());
   const rows = [], rowsrc = []; let empt = 0;
   for (let i = hr + 1; i < aoa.length; i++) {
     const raw = aoa[i] || [];
-    if (spec.valid(raw)) { rows.push(spec.cols.map(c => { const v = raw[c]; return v == null ? '' : v; })); rowsrc.push(i); empt = 0; }
+    if (spec.valid(raw)) { rows.push(spec.cols.map(c => { const v = c < 0 ? '' : raw[c]; return v == null ? '' : v; })); rowsrc.push(i); empt = 0; }
     else { empt++; if (empt > 250 && rows.length > 0) break; }
   }
   return { headers, rows, sheet: sname, rowsrc };
