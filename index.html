@@ -573,6 +573,15 @@ tbody tr:hover{background:rgba(255,255,255,.025)}
 .mtab{font-size:12.5px;padding:7px 14px}
 .mtab.on{background:var(--card2);color:var(--ink);box-shadow:inset 0 -2px 0 var(--solar)}
 .livechip{box-shadow:var(--shadow)}
+.cf-btn{margin-left:6px;border:1px solid transparent;background:transparent;color:var(--muted);cursor:pointer;font-size:11px;line-height:1;padding:2px 5px;border-radius:5px;vertical-align:middle;opacity:.55}
+th:hover .cf-btn,.cf-btn.on{opacity:1}.cf-btn:hover{border-color:var(--line);color:var(--ink)}.cf-btn.on{background:var(--solar);color:#1a1205;border-color:var(--solar)}
+.cf-pop{position:fixed;z-index:400;width:270px;max-height:440px;display:flex;flex-direction:column;gap:8px;background:var(--card2,#14283a);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:12px;font-size:12.5px;color:var(--ink);text-transform:none;letter-spacing:0;font-weight:500}
+.cf-pop .cf-h{font-weight:700;font-size:13px}.cf-pop .cf-sort{display:flex;gap:6px}.cf-pop .cf-sort button,.cf-pop .cf-btns button{flex:1;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:7px;padding:6px 8px;cursor:pointer;font-size:12px}
+.cf-pop .cf-sort button:hover,.cf-pop .cf-btns button:hover{border-color:var(--solar)}.cf-pop .cf-q{width:100%;box-sizing:border-box;padding:7px 9px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink)}
+.cf-pop .cf-list{overflow:auto;max-height:220px;display:flex;flex-direction:column;gap:3px;padding-right:4px}.cf-pop label{display:flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cf-pop .cf-btns{display:flex;gap:6px}.cf-pop .cf-ok{background:var(--solar)!important;color:#1a1205!important;border-color:var(--solar)!important;font-weight:700}
+.cf-note{font-size:12px;color:var(--muted);margin:2px 0 8px}.cf-note a{color:var(--solar)}
+
 .sh-chip{position:fixed;left:22px;bottom:22px;z-index:150;padding:9px 15px;border-radius:999px;background:var(--card2);border:1px solid rgba(255,176,46,.45);color:var(--ink);font-size:12.5px;font-weight:600;box-shadow:var(--shadow);opacity:0;transform:translateY(14px);pointer-events:none;transition:opacity .35s,transform .35s}
 .sh-chip.on{opacity:1;transform:none}
 .sh-chip.err{border-color:rgba(230,80,80,.6)}
@@ -3771,8 +3780,78 @@ try{ const _shSave=saveState; saveState=function(){ const r=_shSave.apply(this,a
   const _hk=PG.hk; PG.hk=function(w){ _hk(w); try{ render(w); }catch(e){} };
 })();
 
+/* ===================== Column filters: a ▾ on every column heading of every table, like Excel ===================== */
+/* The list holds the values found in that column. Pick values, sort A→Z / Z→A, or search. Total rows always stay.
+   Filters are kept per table while you use the dashboard and come back when the table is redrawn. */
+const CF={};   /* tableKey -> {f:{col:[values]}, s:{col,dir}} */
+let CF_OBS=null, CF_POP=null;
+const cfNorm=s=>String(s==null?'':s).replace(/\s+/g,' ').trim();
+const cfHeadRow=t=>{ const rs=t.querySelectorAll('thead tr'); return rs[rs.length-1]||null; };
+const cfColName=th=>cfNorm((th.querySelector('.cc-th-name')||th).cloneNode(true).textContent.replace(/[▾▴▼↑↓]/g,'')).replace(/×$/,'').trim();
+function cfTableKey(t){ const card=t.closest('.card'); const h=card&&card.querySelector('h3'); const all=card?[...card.querySelectorAll('table')]:[t];
+  const hr=cfHeadRow(t); const sig=hr?[...hr.children].filter(x=>!x.dataset.cc).slice(0,4).map(cfColName).join('|'):'';
+  return currentPage+'|'+(h?cfNorm(h.textContent):'')+'|'+all.indexOf(t)+'|'+sig; }
+function cfCellVal(td){ if(!td) return ''; const inp=td.querySelector('input,select,textarea'); if(inp&&inp.value!=null&&!td.textContent.trim()) return cfNorm(inp.value); return cfNorm(td.innerText||td.textContent); }
+const cfIsTotal=tr=>tr.children.length<=1||/700|bold/.test(tr.style.fontWeight||'')||tr.classList.contains('tot')||/^total\b/i.test(cfNorm((tr.children[0]||{}).textContent));
+const cfNum=s=>{ const x=String(s).replace(/[^0-9.\-]/g,''); return x&&!isNaN(+x)&&/\d/.test(s)&&!/[a-z؀-ۿ]{3,}/i.test(String(s).replace(/egp|k|m|%/ig,''))?+x*(/\dk\b/i.test(s)?1e3:/\dm\b/i.test(s)?1e6:1):null; };
+function cfColIndex(t,col){ const hr=cfHeadRow(t); if(!hr) return -1; let i=0; for(const th of hr.children){ if(cfColName(th)===col) return i; i+=(+th.colSpan||1); } return -1; }
+function cfCells(tr){ const out=[]; [...tr.children].forEach(td=>{ out.push(td); for(let k=1;k<(+td.colSpan||1);k++) out.push(null); }); return out; }
+function cfApply(t){ const st=CF[cfTableKey(t)]; const tb=t.querySelector('tbody'); if(!tb) return;
+  const rows=[...tb.children].filter(r=>r.tagName==='TR');
+  const act=st?Object.keys(st.f).filter(c=>st.f[c]):[]; const idx={}; act.forEach(c=>idx[c]=cfColIndex(t,c));
+  let shown=0; rows.forEach(tr=>{ if(cfIsTotal(tr)){ tr.style.display=''; return; } const cells=cfCells(tr);
+    const ok=act.every(c=>idx[c]<0||st.f[c].includes(cfCellVal(cells[idx[c]])||'(Blanks)')); tr.style.display=ok?'':'none'; if(ok) shown++; });
+  if(st&&st.s){ const i=cfColIndex(t,st.s.col); if(i>=0){ const body=rows.filter(r=>!cfIsTotal(r)), tot=rows.filter(cfIsTotal);
+      const key=r=>cfCellVal(cfCells(r)[i]); const allNum=body.every(r=>{ const v=key(r); return !v||v==='—'||cfNum(v)!=null; });
+      const sorted=body.slice().sort((a,b)=>{ const x=key(a), y=key(b); let c; if(allNum) c=(cfNum(x)||0)-(cfNum(y)||0); else c=x.localeCompare(y,undefined,{numeric:true,sensitivity:'base'}); return st.s.dir==='d'?-c:c; }).concat(tot);
+      if(sorted.some((r,k)=>r!==rows[k])) sorted.forEach(r=>tb.appendChild(r)); } }
+  const hr=cfHeadRow(t); if(hr) [...hr.children].forEach(th=>{ const b=th.querySelector('.cf-btn'); if(!b) return; const c=cfColName(th); const on=!!(st&&(st.f[c]||(st.s&&st.s.col===c)));
+    if(b.classList.contains('on')!==on) b.classList.toggle('on',on); const tx=st&&st.s&&st.s.col===c?(st.s.dir==='d'?'\u2193':'\u2191'):'\u25be'; if(b.textContent!==tx) b.textContent=tx; b.title=on?'Filtered / sorted \u2014 click to change':'Filter or sort this column'; });
+  let note=t.parentElement&&t.parentElement.querySelector(':scope > .cf-note');
+  if(act.length){ if(!note){ note=document.createElement('div'); note.className='cf-note'; t.parentElement.insertBefore(note,t); }
+    const nh='Filtered: showing '+shown+' of '+rows.filter(r=>!cfIsTotal(r)).length+' rows \u00b7 totals not recalculated \u00b7 <a href="#" class="cf-clear">clear all filters</a>'; if(note.innerHTML!==nh) note.innerHTML=nh; }
+  else if(note) note.remove(); }
+function cfScan(){ const wrap=document.getElementById('wrap'); if(!wrap) return;
+  wrap.querySelectorAll('table').forEach(t=>{ const hr=cfHeadRow(t); if(!hr||!t.querySelector('tbody')) return;
+    [...hr.children].forEach(th=>{ if(th.dataset.cc&&!th.classList.contains('cc-th')) return; if(th.querySelector('.cf-btn')||th.dataset.cc) return; if(!cfColName(th)) return;
+      const b=document.createElement('button'); b.type='button'; b.className='cf-btn'; b.textContent='▾'; b.title='Filter or sort this column'; th.appendChild(b); });
+    cfApply(t); });
+  if(CF_OBS) CF_OBS.takeRecords(); if(typeof CC_OBSERVER!=='undefined'&&CC_OBSERVER) CC_OBSERVER.takeRecords(); }
+function cfClose(){ if(CF_POP){ CF_POP.remove(); CF_POP=null; } }
+function cfOpen(btn){ cfClose(); const th=btn.closest('th'), t=btn.closest('table'); const col=cfColName(th), key=cfTableKey(t), i=cfColIndex(t,col); if(i<0) return;
+  const st=CF[key]||(CF[key]={f:{},s:null}); const tb=t.querySelector('tbody');
+  const vals=[...new Set([...tb.children].filter(r=>r.tagName==='TR'&&!cfIsTotal(r)).map(r=>cfCellVal(cfCells(r)[i])||'(Blanks)'))];
+  const allNum=vals.every(v=>v==='(Blanks)'||v==='—'||cfNum(v)!=null);
+  vals.sort((a,b)=>allNum?(cfNum(a)||0)-(cfNum(b)||0):a.localeCompare(b,undefined,{numeric:true,sensitivity:'base'}));
+  const cur=st.f[col]?new Set(st.f[col]):null;
+  const pop=document.createElement('div'); pop.className='cf-pop'; CF_POP=pop;
+  pop.innerHTML=`<div class="cf-h">${esc(col)}</div><div class="cf-sort"><button type="button" data-s="a">Sort ${allNum?'smallest → largest':'A → Z'}</button><button type="button" data-s="d">Sort ${allNum?'largest → smallest':'Z → A'}</button></div>
+    <input class="cf-q" type="search" placeholder="Search ${vals.length} value${vals.length===1?'':'s'}…"><label class="cf-all"><input type="checkbox" ${!cur?'checked':''}> <b>(Select all)</b></label>
+    <div class="cf-list">${vals.map((v,k)=>`<label data-v="${esc(v.toLowerCase())}"><input type="checkbox" data-k="${k}" ${!cur||cur.has(v)?'checked':''}> <span dir="auto">${esc(v)}</span></label>`).join('')}</div>
+    <div class="cf-btns"><button type="button" class="cf-reset">Clear</button><button type="button" class="cf-ok">Apply</button></div>`;
+  document.body.appendChild(pop); const r=btn.getBoundingClientRect(); const W=270;
+  pop.style.left=Math.max(8,Math.min(window.innerWidth-W-8,r.left-W+r.width+8))+'px'; pop.style.top=Math.min(window.innerHeight-60,r.bottom+6)+'px';
+  const boxes=[...pop.querySelectorAll('.cf-list input')], all=pop.querySelector('.cf-all input');
+  const visible=()=>boxes.filter(b=>b.closest('label').style.display!=='none');
+  all.onchange=()=>visible().forEach(b=>b.checked=all.checked);
+  boxes.forEach(b=>b.onchange=()=>{ all.checked=visible().every(x=>x.checked); });
+  pop.querySelector('.cf-q').oninput=e=>{ const q=e.target.value.trim().toLowerCase(); boxes.forEach(b=>{ const l=b.closest('label'); const m=!q||l.dataset.v.includes(q); l.style.display=m?'':'none'; if(q) b.checked=m; }); all.checked=visible().every(x=>x.checked); };
+  pop.querySelectorAll('.cf-sort button').forEach(b=>b.onclick=()=>{ st.s={col,dir:b.dataset.s}; cfClose(); cfApply(t); });
+  pop.querySelector('.cf-reset').onclick=()=>{ delete st.f[col]; if(st.s&&st.s.col===col) st.s=null; cfClose(); cfApply(t); };
+  pop.querySelector('.cf-ok').onclick=()=>{ const keep=boxes.filter(b=>b.checked).map(b=>vals[+b.dataset.k]); if(keep.length===vals.length) delete st.f[col]; else st.f[col]=keep; cfClose(); cfApply(t); };
+  setTimeout(()=>pop.querySelector('.cf-q').focus(),0); }
+(function cfInit(){ const wrap=document.getElementById('wrap'); if(!wrap) return;
+  wrap.addEventListener('click',e=>{ const b=e.target.closest('.cf-btn'); if(b){ e.preventDefault(); e.stopPropagation(); if(CF_POP&&CF_POP._btn===b){ cfClose(); return; } cfOpen(b); if(CF_POP) CF_POP._btn=b; return; }
+    const c=e.target.closest('.cf-clear'); if(c){ e.preventDefault(); const t=c.closest('.cf-note').parentElement.querySelector('table'); if(t){ delete CF[cfTableKey(t)]; cfApply(t); } } },true);
+  document.addEventListener('mousedown',e=>{ if(CF_POP&&!CF_POP.contains(e.target)&&!e.target.closest('.cf-btn')) cfClose(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') cfClose(); });
+  window.addEventListener('scroll',()=>cfClose(),{passive:true});
+  let q=false; CF_OBS=new MutationObserver(()=>{ if(q) return; q=true; setTimeout(()=>{ q=false; try{ cfScan(); }catch(err){ console.warn('column filters',err); } },60); });
+  CF_OBS.observe(wrap,{childList:true,subtree:true});
+})();
+
 /* ===================== Live refresh: pick up newly synced data without reloading ===================== */
-const BUILD_ID='2026-11-26-v20';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+const BUILD_ID='2026-11-26-v21';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
 (function(){
   if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
   const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],utensils:['utensils'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog','ppmresp'],pest:['pest']};
