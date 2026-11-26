@@ -1963,8 +1963,8 @@ PG.capex=function(w){
 
 /* ---------- OPEX ---------- */
 PG.opex=function(w){
-  const need=['HQ1','HQ2','HQ3','Sand','Pest Control and Medical Servic','Uniform_Breakdown','Apartment Rents'];
-  const sh=need.map(n=>bgSheet(n,'opex')); if(sh.some(s=>s===undefined)) return bgLoading(w,'the OPEX budget');
+  const need=['HQ1','HQ2','HQ3','Sand','Pest Control and Medical Servic','Uniform_Breakdown','Rents','Sites Breakfast','Leased Printers'];
+  const sh=need.map(n=>bgSheet(n,'opex')); if(sh[6]===null){ const alt=bgSheet('Apartment Rents','opex'); if(alt) sh[6]=alt; } if(sh.some(s=>s===undefined)) return bgLoading(w,'the OPEX budget');
   const secs=[]; let html='<div class="sec-title" style="margin-top:4px"><h2 style="font-size:20px">OPEX — Headquarter</h2><span>HQ1, HQ2 and HQ3</span></div>';
   const add=s=>{ if(typeof s==='string') html+=s; else { html+=s.html; secs.push(s); } };
   add(bgMatrixSection(w,'h1','HQ1','facility & admin accounts by month','HQ1','opex',0,{hideZero:true,tableTitle:'HQ1 — accounts'}));
@@ -1991,7 +1991,7 @@ PG.opex=function(w){
   }
   html+='<div class="sec-title" style="margin-top:28px"><h2 style="font-size:20px">OPEX — Sand</h2><span>Sand office accounts</span></div>';
   add(bgMatrixSection(w,'sd','Sand','facility & admin accounts by month','Sand','opex',0,{hideZero:true,tableTitle:'Sand — accounts'}));
-  html+='<div class="sec-title" style="margin-top:28px"><h2 style="font-size:20px">OPEX — O&amp;M</h2><span>pest control, medical service, uniforms and apartment rents</span></div>';
+  html+='<div class="sec-title" style="margin-top:28px"><h2 style="font-size:20px">OPEX — O&amp;M</h2><span>pest control, medical service, sites breakfast, rents, leased printers and uniforms</span></div>';
   /* Pest control and medical service */
   const pm=sh[4]; if(!pm) html+=bgMissing(need[4]); else {
     const T=bgTable(pm,[[/^s\.?\s*no/i,'#'],[/location|service/i,'Location / service'],[/monthly/i,'Monthly (EGP)','money'],[/annual/i,'Annual (EGP)','money'],[/scope|notes/i,'Service']]);
@@ -2005,22 +2005,30 @@ PG.opex=function(w){
       mkChart('pmL',{type:'bar',data:{labels:locs,datasets:SV.map((s,i)=>({label:s,data:locs.map(l=>T.rows.filter(r=>bgT(r[iL])===l&&bgT(r[iS])===s).reduce((a,r)=>a+bgN(r[iM]),0)),backgroundColor:pal[i%4],stack:'s',maxBarThickness:16}))},options:{indexAxis:'y',plugins:{legend:{position:'top',align:'end'}},scales:{x:{...gridY,stacked:true},y:{grid:{display:false},stacked:true}},maintainAspectRatio:false}}); }});
   }
   /* Uniform breakdown: item lines and the total lines underneath */
-  const un=sh[5]; if(!un) html+=bgMissing(need[5]); else {
+  const un=sh[5]; let uniHtml_=''; if(!un) uniHtml_=bgMissing(need[5]); else {
     const hr=un.hr||0, h=un.r[hr]||[]; const iI=bgCol(h,/^item/i), iQ=bgCol(h,/quantity|qty/i), iU=bgCol(h,/unit price/i), iT=bgCol(h,/^total/i);
     const lastNum=r=>{ for(let i=r.length-1;i>=0;i--) if(typeof r[i]==='number') return r[i]; return 0; };
     const unitOf=r=>{ for(let i=iU;i<(iT>=0?iT:r.length);i++) if(typeof r[i]==='number') return r[i]; return 0; };
     const rows=un.r.slice(hr+1).filter(r=>r.some(v=>bgT(v)!==''));
     const items=rows.filter(r=>bgT(r[iI])&&typeof r[iQ]==='number'), sums=rows.filter(r=>!(bgT(r[iI])&&typeof r[iQ]==='number'));
     const label=r=>bgT(r[0])||bgT(r[iI]);
-    html+=`<div class="grid g2" style="margin-top:16px"><div class="card"><h3>Uniforms</h3><p class="cap">From “${esc(un.n)}”</p><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Item</th><th class="num">Quantity</th><th class="num">Unit price (EGP)</th><th class="num">Total (EGP)</th></tr></thead><tbody>${items.map(r=>'<tr><td>'+esc(bgT(r[0]))+'</td><td dir="auto">'+esc(bgT(r[iI]))+'</td><td class="num">'+bgN(r[iQ]).toLocaleString('en-US')+'</td><td class="num">'+bgMoney(unitOf(r))+'</td><td class="num">'+bgMoney(lastNum(r))+'</td></tr>').join('')}${sums.map(r=>'<tr style="font-weight:700;background:rgba(242,165,22,.08)"><td colspan="4">'+esc(label(r))+'</td><td class="num">'+bgMoney(lastNum(r))+'</td></tr>').join('')}</tbody></table></div></div>`;
+    const uniHtml=`<div class="card"><h3>Uniforms</h3><p class="cap">From “${esc(un.n)}”</p><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Item</th><th class="num">Quantity</th><th class="num">Unit price (EGP)</th><th class="num">Total (EGP)</th></tr></thead><tbody>${items.map(r=>'<tr><td>'+esc(bgT(r[0]))+'</td><td dir="auto">'+esc(bgT(r[iI]))+'</td><td class="num">'+bgN(r[iQ]).toLocaleString('en-US')+'</td><td class="num">'+bgMoney(unitOf(r))+'</td><td class="num">'+bgMoney(lastNum(r))+'</td></tr>').join('')}${sums.map(r=>'<tr style="font-weight:700;background:rgba(242,165,22,.08)"><td colspan="4">'+esc(label(r))+'</td><td class="num">'+bgMoney(lastNum(r))+'</td></tr>').join('')}</tbody></table></div></div>`;
+    uniHtml_=uniHtml;
   }
-  /* Apartment rents */
-  const ap=sh[6]; if(!ap) html+=(un?'':'<div class="grid g2" style="margin-top:16px">')+bgMissing(need[6])+'</div>'; else {
-    const h=ap.r[ap.hr||0]||[]; const rows=ap.r.slice((ap.hr||0)+1).filter(r=>bgT(r[0]));
-    const numCols=h.map((x,i)=>i).filter(i=>i>0&&bgT(h[i]));
-    const sum=i=>rows.reduce((a,r)=>a+bgN(r[i]),0);
-    html+=(un?'':'<div class="grid g2" style="margin-top:16px">')+`<div class="card"><h3>Apartment rents</h3><p class="cap">From “${esc(ap.n)}” — monthly</p><div class="tbl-wrap"><table><thead><tr><th>${esc(bgT(h[0])||'Site')}</th>${numCols.map(i=>'<th class="num">'+esc(bgT(h[i]))+'</th>').join('')}</tr></thead><tbody>${rows.map(r=>'<tr><td>'+esc(bgT(r[0]))+'</td>'+numCols.map(i=>'<td class="num">'+bgMoney(r[i])+'</td>').join('')+'</tr>').join('')}<tr style="font-weight:700;background:rgba(242,165,22,.08)"><td>Total per month</td>${numCols.map(i=>'<td class="num">'+bgMoney(sum(i))+'</td>').join('')}</tr><tr style="font-weight:700"><td>Total per year</td>${numCols.map(i=>'<td class="num">'+bgMoney(sum(i)*12)+'</td>').join('')}</tr></tbody></table></div></div></div>`;
-  }
+  /* Sites breakfast, rents and leased printers: one row per site, current monthly rate and the expected rate */
+  const rate=(s,name,title,unit)=>{ if(!s) return {html:bgMissing(name),cur:0,exp:0,n:0,expLabel:'Expected'};
+    const h=s.r[s.hr||0]||[]; const iC=bgCol(h,/current/i), iE=bgCol(h,/expected|increase/i); const rows=s.r.slice((s.hr||0)+1).filter(r=>bgT(r[0]));
+    const cur=rows.reduce((a,r)=>a+bgN(r[iC]),0), exp=rows.reduce((a,r)=>a+bgN(r[iE]),0);
+    const html=`<div class="card"><h3>${esc(title)}</h3><p class="cap">From “${esc(s.n)}” — per month, ${rows.length} ${unit}</p><div class="tbl-wrap"><table><thead><tr><th>${esc(bgT(h[0])||'Site')}</th><th class="num">${esc(bgT(h[iC])||'Current')}</th><th class="num">${esc(bgT(h[iE])||'Expected')}</th></tr></thead><tbody>${rows.map(r=>'<tr><td>'+esc(bgT(r[0]))+'</td><td class="num">'+bgMoney(r[iC])+'</td><td class="num">'+bgMoney(r[iE])+'</td></tr>').join('')}<tr style="font-weight:700;background:rgba(242,165,22,.08)"><td>Total per month</td><td class="num">${bgMoney(cur)}</td><td class="num">${bgMoney(exp)}</td></tr><tr style="font-weight:700"><td>Total per year</td><td class="num">${bgMoney(cur*12)}</td><td class="num">${bgMoney(exp*12)}</td></tr></tbody></table></div></div>`;
+    return {html,cur,exp,n:rows.length,rows,iC,iE,expLabel:bgT(h[iE])||'Expected'}; };
+  const RB=rate(sh[7],need[7],'Sites breakfast','sites'), RR=rate(sh[6],need[6],'Rents','apartments'), RP=rate(sh[8],need[8],'Leased printers','printers');
+  const RS=[['Sites breakfast',RB],['Rents',RR],['Leased printers',RP]];
+  html+=`<div class="sec-title"><h2>Sites breakfast, rents &amp; leased printers</h2><span>current monthly rates and the expected rates after the increase</span></div>
+  <div class="card" style="padding:12px 16px"><div class="kpis">${RS.map(([t,R],i)=>kpi(t+' — per month','EGP '+egp(R.cur),'','EGP '+egp(R.cur*12)+' a year · expected EGP '+egp(R.exp)+' a month',['p','g','v'][i])).join('')}${kpi('All three — per year','EGP '+egp(RS.reduce((a,[,R])=>a+R.cur,0)*12),'','expected EGP '+egp(RS.reduce((a,[,R])=>a+R.exp,0)*12)+' a year','')}</div></div>
+  <div class="grid g2" style="margin-top:16px"><div class="card"><h3>Current vs expected</h3><p class="cap">Per month (EGP)</p><div class="chart-h"><canvas id="omR"></canvas></div></div>${RR.html}</div>
+  <div class="grid g2" style="margin-top:16px">${RB.html}${RP.html}</div>
+  <div style="margin-top:16px">${uniHtml_}</div>`;
+  secs.push({init:()=>{ mkChart('omR',{type:'bar',data:{labels:RS.map(x=>x[0]),datasets:[{label:'Current',data:RS.map(x=>x[1].cur),backgroundColor:C.petrol,borderRadius:4,maxBarThickness:36},{label:'Expected after increase',data:RS.map(x=>x[1].exp),backgroundColor:C.solar,borderRadius:4,maxBarThickness:36}]},options:{plugins:{legend:{position:'top',align:'end'}},scales:{x:gridX,y:gridY},maintainAspectRatio:false}}); }});
   w.innerHTML=html; secs.forEach(s=>{ try{ s.init(); }catch(e){ console.warn('opex',e); } });
 };
 
@@ -3680,7 +3688,7 @@ try{ const _shSave=saveState; saveState=function(){ const r=_shSave.apply(this,a
 })();
 
 /* ===================== Live refresh: pick up newly synced data without reloading ===================== */
-const BUILD_ID='2026-11-25-v17';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
+const BUILD_ID='2026-11-26-v18';   /* change this whenever the dashboard CODE changes, so open tabs offer a reload */
 (function(){
   if(!/^https?:$/.test(location.protocol)) return;   /* only when served from the website, not a saved copy */
   const PAGE_DS={payments:['payments'],hk:['hk','attendance','hkchecklist'],hkext:['hkext'],consumption:['adminconsumption'],utilities:['water'],stock:['stock','adminconsumption'],sandstock:['sandstock','adminconsumption'],utensils:['utensils'],contracts:['contracts'],couriers:['couriers'],budget:['fna','sand','capex','actual'],kstd:['kstd'],catering:['catering','cateringsites'],pr:['pr'],assetsdata:['assetsdata'],ppmlog:['ppmlog','ppmresp'],pest:['pest']};
